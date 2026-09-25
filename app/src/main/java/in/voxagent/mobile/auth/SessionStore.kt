@@ -18,11 +18,34 @@ class SessionStore(context: Context) {
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
     )
 
-    fun save(token: String, expiresAt: Instant) {
-        prefs.edit()
+    fun save(
+        token: String,
+        expiresAt: Instant,
+        email: String? = null,
+        displayName: String? = null,
+        avatarUrl: String? = null,
+    ) {
+        val editor = prefs.edit()
             .putString(KEY_TOKEN, token)
             .putLong(KEY_EXPIRES_AT, expiresAt.toEpochMilli())
-            .apply()
+
+        if (email != null) editor.putString(KEY_EMAIL, email)
+        if (displayName != null) editor.putString(KEY_DISPLAY_NAME, displayName)
+        if (avatarUrl != null) editor.putString(KEY_AVATAR_URL, avatarUrl)
+
+        editor.apply()
+    }
+
+    fun updateProfile(
+        email: String? = null,
+        displayName: String? = null,
+        avatarUrl: String? = null,
+    ) {
+        val editor = prefs.edit()
+        if (email != null) editor.putString(KEY_EMAIL, email)
+        if (displayName != null) editor.putString(KEY_DISPLAY_NAME, displayName)
+        if (avatarUrl != null) editor.putString(KEY_AVATAR_URL, avatarUrl)
+        editor.apply()
     }
 
     fun currentToken(): String? {
@@ -32,6 +55,12 @@ class SessionStore(context: Context) {
         return token
     }
 
+    fun getUserEmail(): String? = prefs.getString(KEY_EMAIL, null)
+
+    fun getUserDisplayName(): String? = prefs.getString(KEY_DISPLAY_NAME, null)
+
+    fun getUserAvatarUrl(): String? = prefs.getString(KEY_AVATAR_URL, null)
+
     fun clear() {
         prefs.edit().clear().apply()
     }
@@ -39,5 +68,8 @@ class SessionStore(context: Context) {
     companion object {
         private const val KEY_TOKEN = "token"
         private const val KEY_EXPIRES_AT = "expires_at"
+        private const val KEY_EMAIL = "user_email"
+        private const val KEY_DISPLAY_NAME = "user_display_name"
+        private const val KEY_AVATAR_URL = "user_avatar_url"
     }
 }

@@ -8,11 +8,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
@@ -61,16 +61,22 @@ fun VoxAtmosphereBackground(
 ) {
     Box(modifier = modifier.fillMaxSize().background(VoidBlack)) {
         if (showGlow) {
+            // Mirrors vox-desktop's `.sign-in-glow`: a soft multi-stop radial
+            // wash (not a hard-edged circle) so it reads as a blob, not a box.
             Box(
                 modifier = Modifier
-                    .size(360.dp)
-                    .offset((-140).dp, (-140).dp)
-                    .blur(90.dp)
+                    .size(560.dp)
+                    .offset((-180).dp, (-190).dp)
+                    .blur(48.dp, BlurredEdgeTreatment.Unbounded)
                     .background(
                         brush = Brush.radialGradient(
-                            colors = listOf(CoralPulse.copy(alpha = 0.35f), Color.Transparent),
+                            colorStops = arrayOf(
+                                0f to CoralPulse.copy(alpha = 0.32f),
+                                0.32f to CoralPulse.copy(alpha = 0.14f),
+                                0.55f to CoralPulse.copy(alpha = 0.05f),
+                                0.76f to Color.Transparent,
+                            ),
                         ),
-                        shape = CircleShape,
                     ),
             )
         }

@@ -8,6 +8,9 @@ import android.location.LocationManager
 import android.graphics.RectF
 import android.os.Looper
 import android.view.Choreographer
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -19,6 +22,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.google.gson.JsonObject
+import `in`.voxagent.mobile.ui.theme.VoidBlack
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -64,6 +68,11 @@ private const val HIGHLIGHT_LAYER = "vox-highlight-layer"
 private const val YOU_SOURCE = "vox-you-source"
 private const val YOU_LAYER = "vox-you-layer"
 
+private const val PREFS_MAP_CACHE = "vox_map_cache"
+private const val KEY_CACHED_LAT = "cached_lat"
+private const val KEY_CACHED_LNG = "cached_lng"
+private const val KEY_CACHED_BEARING = "cached_bearing"
+
 /** Ambient orbiting 3D map, ported from vox-desktop's use-mission-map.ts. */
 @Composable
 fun MissionMapBackground(modifier: Modifier = Modifier, locationPermissionGranted: Boolean) {
@@ -84,44 +93,91 @@ fun MissionMapBackground(modifier: Modifier = Modifier, locationPermissionGrante
         controller.applyLocation(locationPermissionGranted)
     }
 
-    AndroidView(modifier = modifier, factory = { controller.mapView })
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(VoidBlack),
+    ) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { controller.mapView },
+        )
+    }
 }
 
 private class MissionMapController(private val context: Context) {
+    private val prefs = context.getSharedPreferences(PREFS_MAP_CACHE, Context.MODE_PRIVATE)
+
     init {
         MapLibre.getInstance(context)
     }
-    val mapView = MapView(context).apply { onCreate(null) }
+
+    @SuppressLint("ClickableViewAccessibility")
+    val mapView = MapView(context).apply {
+        // Guarantee dark canvas before tiles composite to prevent white flashing
+        setBackgroundColor(android.graphics.Color.parseColor("#040506"))
+        // Consume all touch events so map gestures (pan, zoom, pinch, tilt) are denied
+        setOnTouchListener { _, _ -> true }
+        onCreate(null)
+    }
+
     private val mapDeferred = CompletableDeferred<MapLibreMap>()
-    private var homeCenter: LatLng? = null
+
+    // Load cached coordinates so the initial frame immediately renders the saved location
+    private val cachedLat = if (prefs.contains(KEY_CACHED_LAT)) {
+        prefs.getFloat(KEY_CACHED_LAT, FALLBACK_LAT.toFloat()).toDouble()
+    } else {
+        FALLBACK_LAT
+    }
+    private val cachedLng = if (prefs.contains(KEY_CACHED_LNG)) {
+        prefs.getFloat(KEY_CACHED_LNG, FALLBACK_LNG.toFloat()).toDouble()
+    } else {
+        FALLBACK_LNG
+    }
+    private val cachedBearing = if (prefs.contains(KEY_CACHED_BEARING)) {
+        prefs.getFloat(KEY_CACHED_BEARING, MAP_BEARING.toFloat()).toDouble()
+    } else {
+        MAP_BEARING
+    }
+
+    private var homeCenter: LatLng? = LatLng(cachedLat, cachedLng)
     private var orbit: OrbitController? = null
 
     fun start() {
         mapView.getMapAsync { map ->
+            // Disable all UI overlays
             map.uiSettings.isCompassEnabled = false
             map.uiSettings.isLogoEnabled = false
             map.uiSettings.isAttributionEnabled = false
+
+            // Explicitly deny all interactive gesture controls (pan, zoom, tilt, rotate)
+            map.uiSettings.setAllGesturesEnabled(false)
+            map.uiSettings.isScrollGesturesEnabled = false
+            map.uiSettings.isZoomGesturesEnabled = false
+            map.uiSettings.isTiltGesturesEnabled = false
+            map.uiSettings.isRotateGesturesEnabled = false
+
+            // Position camera immediately at the cached location for instant rendering
             map.moveCamera(
                 CameraUpdateFactory.newCameraPosition(
                     CameraPosition.Builder()
-                        .target(LatLng(FALLBACK_LAT, FALLBACK_LNG))
+                        .target(LatLng(cachedLat, cachedLng))
                         .zoom(MAP_ZOOM)
                         .tilt(MAP_PITCH)
-                        .bearing(MAP_BEARING)
+                        .bearing(cachedBearing)
                         .build(),
                 ),
             )
+
             map.setStyle(Style.Builder().fromUri(STYLE_URL)) { style ->
                 applyMissionControlLook(style)
                 add3dBuildings(style)
                 addHighlightLayer(style)
                 addYouLayer(style)
             }
+
             val o = OrbitController(map) { homeCenter }
             orbit = o
-            map.addOnCameraMoveStartedListener { reason ->
-                if (reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) o.pause()
-            }
             o.start()
             mapDeferred.complete(map)
         }
@@ -131,6 +187,14 @@ private class MissionMapController(private val context: Context) {
         val map = mapDeferred.await()
         val loc = resolveLocation(context, granted)
         homeCenter = loc
+
+        // Save location and bearing to cache so next launch immediately starts here
+        prefs.edit()
+            .putFloat(KEY_CACHED_LAT, loc.latitude.toFloat())
+            .putFloat(KEY_CACHED_LNG, loc.longitude.toFloat())
+            .putFloat(KEY_CACHED_BEARING, map.cameraPosition.bearing.toFloat())
+            .apply()
+
         orbit?.pause(2200)
         applyHome(map, loc)
     }
@@ -151,9 +215,7 @@ private class MissionMapController(private val context: Context) {
     }
 }
 
-/** Frame-synced bearing rotation around home, pausing after user gestures — ports the
- * requestAnimationFrame loop in use-mission-map.ts (no maplibre-gl JS "isMoving" analog here,
- * so the gesture pause window is the only guard against fighting a user drag). */
+/** Frame-synced bearing rotation around home */
 private class OrbitController(private val map: MapLibreMap, private val getCenter: () -> LatLng?) {
     private var pausedUntilMs = 0L
     private var lastFrameNs = 0L
@@ -354,8 +416,7 @@ private fun pointInRing(x: Double, y: Double, ring: List<Point>): Boolean {
     return inside
 }
 
-// Highlights the home building in red, matching map-highlight.ts: a wide query box because GPS
-// often lands a few metres off (on the road), taking the containing building or else the nearest.
+// Highlights the home building in red, matching map-highlight.ts
 private fun highlightBuildingAt(map: MapLibreMap, loc: LatLng) {
     val style = map.style ?: return
     if (style.getLayer(BUILDINGS_LAYER) == null) return
@@ -397,7 +458,6 @@ private fun highlightBuildingAt(map: MapLibreMap, loc: LatLng) {
         ) + 1.0
     val cx = ring.sumOf { it.longitude() } / ring.size
     val cy = ring.sumOf { it.latitude() } / ring.size
-    // Same footprint + height as the grey extrusion z-fights, so grow the red copy ~3% to cover it.
     val scaled = ring.map { Point.fromLngLat(cx + (it.longitude() - cx) * 1.03, cy + (it.latitude() - cy) * 1.03) }
     val outProps = JsonObject().apply {
         for ((k, v) in props.entrySet()) add(k, v)

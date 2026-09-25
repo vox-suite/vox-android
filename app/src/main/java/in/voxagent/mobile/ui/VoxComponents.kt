@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -108,7 +109,12 @@ fun VoxStatusRow(label: String, statusText: String, tone: VoxStatusTone) {
 }
 
 @Composable
-fun VoxPrimaryButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun VoxPrimaryButton(
+    text: String,
+    modifier: Modifier = Modifier,
+    icon: (@Composable () -> Unit)? = null,
+    onClick: () -> Unit,
+) {
     Button(
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
@@ -119,6 +125,10 @@ fun VoxPrimaryButton(text: String, modifier: Modifier = Modifier, onClick: () ->
         ),
         contentPadding = PaddingValues(vertical = 14.dp),
     ) {
+        if (icon != null) {
+            icon()
+            Spacer(modifier = Modifier.size(10.dp))
+        }
         Text(text, fontWeight = FontWeight.SemiBold)
     }
 }

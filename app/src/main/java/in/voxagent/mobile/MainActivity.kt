@@ -7,12 +7,29 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -25,6 +42,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -35,7 +56,9 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import android.os.Build
+import `in`.voxagent.mobile.R
 import `in`.voxagent.mobile.auth.AuthManager
+import `in`.voxagent.mobile.auth.UserProfile
 import `in`.voxagent.mobile.location.LocationConsentApi
 import `in`.voxagent.mobile.location.LocationConsentStatus
 import `in`.voxagent.mobile.location.LocationTrackingManager
@@ -46,17 +69,23 @@ import `in`.voxagent.mobile.sms.SmsSyncWorker
 import `in`.voxagent.mobile.ui.ConsentScreen
 import `in`.voxagent.mobile.ui.LocationConsentScreen
 import `in`.voxagent.mobile.ui.VoxAtmosphereBackground
-import `in`.voxagent.mobile.ui.VoxPrimaryButton
-import `in`.voxagent.mobile.ui.VoxSecondaryButton
-import `in`.voxagent.mobile.ui.VoxSectionLabel
-import `in`.voxagent.mobile.ui.VoxStatusRow
-import `in`.voxagent.mobile.ui.VoxStatusTone
+import `in`.voxagent.mobile.ui.VoxBottomNav
 import `in`.voxagent.mobile.ui.VoxLogo
+import `in`.voxagent.mobile.ui.VoxNavTab
+import `in`.voxagent.mobile.ui.VoxPrimaryButton
+import `in`.voxagent.mobile.ui.VoxProfileSheet
 import `in`.voxagent.mobile.ui.VoxWordmark
+import `in`.voxagent.mobile.ui.theme.BorderSubtle
 import `in`.voxagent.mobile.ui.theme.CoralPulse
+import `in`.voxagent.mobile.ui.theme.Ink
+import `in`.voxagent.mobile.ui.theme.Obsidian
+import `in`.voxagent.mobile.ui.theme.PureWhite
+import `in`.voxagent.mobile.ui.theme.Slate
+import `in`.voxagent.mobile.ui.theme.Smoke
+import `in`.voxagent.mobile.ui.theme.SuccessGreen
+import `in`.voxagent.mobile.ui.theme.VoidBlack
 import `in`.voxagent.mobile.ui.theme.VoxTheme
 import `in`.voxagent.mobile.ui.voxGrain
-import androidx.compose.ui.graphics.BlendMode
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
@@ -66,6 +95,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Ensure the decor view immediately renders Void Black to avoid any white flash
+        window.decorView.setBackgroundColor(android.graphics.Color.parseColor("#040506"))
         authManager = AuthManager(applicationContext)
 
         setContent {
@@ -235,52 +266,32 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
         return
     }
 
+    var userProfileState by remember(signedIn) { mutableStateOf(authManager.userProfile()) }
+
+    LaunchedEffect(signedIn) {
+        if (signedIn && (userProfileState.avatarUrl.isNullOrBlank() || userProfileState.displayName.isNullOrBlank())) {
+            val refreshed = authManager.tryRefreshProfile()
+            if (refreshed != null) {
+                userProfileState = refreshed
+            }
+        }
+    }
+
     HomeScreen(
-        consentStatus = consentStatus,
-        smsPermissionGranted = smsPermissionGranted,
+        userProfile = userProfileState,
         locationPermissionGranted = locationPermissionGranted,
-        locationConsentStatus = locationConsentStatus,
-        activityRecognitionGranted = activityRecognitionGranted,
-        backgroundLocationGranted = backgroundLocationGranted,
-        statusMessage = statusMessage,
-        onReviewDataSharing = { showConsentScreen = true },
-        onGrantSmsAccess = { permissionLauncher.launch(Manifest.permission.READ_SMS) },
-        onSyncNow = {
-            schedulePeriodicSync(activity)
-            val request = OneTimeWorkRequestBuilder<SmsSyncWorker>().build()
-            WorkManager.getInstance(activity).enqueue(request)
-            statusMessage = "Sync started"
-        },
-        onRevokeDataSharing = {
-            val token = authManager.currentToken() ?: return@HomeScreen
-            scope.launch {
-                runCatching { SmsConsentApi.revoke(token) }
-                    .onSuccess { consentStatus = SmsConsentStatus(granted = false, retention_days = 90) }
-            }
-        },
-        onReviewLocationTracking = { showLocationConsentScreen = true },
-        onGrantActivityRecognition = {
-            activityRecognitionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
-        },
-        onGrantBackgroundLocation = {
-            backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-        },
-        onRevokeLocationTracking = {
-            val token = authManager.currentToken() ?: return@HomeScreen
-            scope.launch {
-                runCatching { LocationConsentApi.revoke(token) }
-                    .onSuccess {
-                        locationConsentStatus =
-                            LocationConsentStatus(granted = false, retention_days = 90)
-                        LocationTrackingManager.stop(activity)
-                    }
-            }
-        },
         onSignOut = {
             authManager.signOut()
             signedIn = false
             consentStatus = null
             locationConsentStatus = null
+        },
+        onSyncProfile = {
+            scope.launch {
+                authManager.signIn().onSuccess {
+                    userProfileState = authManager.userProfile()
+                }
+            }
         },
     )
 }
@@ -311,15 +322,30 @@ private fun SignInContent(statusMessage: String, onSignIn: () -> Unit) {
             VoxLogo(size = 80.dp, animated = true)
         }
 
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "Vox",
+                color = MaterialTheme.colorScheme.onBackground,
+                fontSize = 32.sp,
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(horizontal = 8.dp, vertical = 3.dp),
+            ) {
+                Text(
+                    text = "MOBILE",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    letterSpacing = 1.sp,
+                )
+            }
+        }
         Text(
-            text = "Sync your activity timeline",
-            color = MaterialTheme.colorScheme.onBackground,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 22.sp,
-            textAlign = TextAlign.Center,
-        )
-        Text(
-            text = "Sign in with the same account you use on Vox desktop.",
+            text = "Talk to your agent, manage tasks, and work with your data — all in one place.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 14.sp,
             textAlign = TextAlign.Center,
@@ -327,123 +353,138 @@ private fun SignInContent(statusMessage: String, onSignIn: () -> Unit) {
         if (statusMessage.isNotEmpty()) {
             Text(text = statusMessage, color = CoralPulse, textAlign = TextAlign.Center)
         }
-        VoxPrimaryButton(text = "Sign in with Google", onClick = onSignIn)
+        VoxPrimaryButton(
+            text = "Continue with Google",
+            icon = {
+                Image(
+                    painter = painterResource(id = R.drawable.ic_google),
+                    contentDescription = null,
+                )
+            },
+            onClick = onSignIn,
+        )
     }
 }
 
+/**
+ * Clean ambient Home screen:
+ * Full-screen 3D ambient map background, tactical header, and floating bottom navigation menu.
+ * Clutter (status rows and raw action buttons) has been cleared from the main viewport.
+ */
 @Composable
 private fun HomeScreen(
-    consentStatus: SmsConsentStatus?,
-    smsPermissionGranted: Boolean,
+    userProfile: UserProfile,
     locationPermissionGranted: Boolean,
-    locationConsentStatus: LocationConsentStatus?,
-    activityRecognitionGranted: Boolean,
-    backgroundLocationGranted: Boolean,
-    statusMessage: String,
-    onReviewDataSharing: () -> Unit,
-    onGrantSmsAccess: () -> Unit,
-    onSyncNow: () -> Unit,
-    onRevokeDataSharing: () -> Unit,
-    onReviewLocationTracking: () -> Unit,
-    onGrantActivityRecognition: () -> Unit,
-    onGrantBackgroundLocation: () -> Unit,
-    onRevokeLocationTracking: () -> Unit,
     onSignOut: () -> Unit,
+    onSyncProfile: (() -> Unit)? = null,
 ) {
-    val consentGranted = consentStatus?.granted == true
-    val locationConsentGranted = locationConsentStatus?.granted == true
-    val locationTrackingActive =
-        locationConsentGranted && activityRecognitionGranted && backgroundLocationGranted
+    var selectedTab by remember { mutableStateOf(VoxNavTab.Home) }
+    var showProfileSheet by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        // Fullscreen Ambient 3D Mission Map
         MissionMapBackground(
             modifier = Modifier.fillMaxSize(),
             locationPermissionGranted = locationPermissionGranted,
         )
 
+        // Subtle ambient grain overlay
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .voxGrain(opacity = 0.07f, blendMode = BlendMode.SrcOver, tileSize = 140.dp),
+                .voxGrain(opacity = 0.05f, blendMode = BlendMode.SrcOver, tileSize = 140.dp),
         )
 
-        Column(
+
+        // Agent Cockpit Card (shown only when the Agent tab is active on the left pill)
+        AnimatedVisibility(
+            visible = selectedTab == VoxNavTab.Agent,
+            enter = fadeIn() + slideInVertically(initialOffsetY = { -40 }),
+            exit = fadeOut() + slideOutVertically(targetOffsetY = { -40 }),
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
+                .align(Alignment.Center)
                 .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            VoxWordmark()
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = Ink.copy(alpha = 0.95f),
+                border = BorderStroke(1.dp, BorderSubtle),
+                shadowElevation = 16.dp,
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    VoxLogo(size = 72.dp, animated = true)
 
-            VoxSectionLabel("Status")
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                VoxStatusRow("Account", "Signed in", VoxStatusTone.Success)
-                VoxStatusRow(
-                    "Data sharing",
-                    if (consentGranted) "Enabled" else "Not enabled",
-                    if (consentGranted) VoxStatusTone.Success else VoxStatusTone.Warning,
-                )
-                VoxStatusRow(
-                    "SMS access",
-                    if (smsPermissionGranted) "Granted" else "Not granted",
-                    if (smsPermissionGranted) VoxStatusTone.Success else VoxStatusTone.Neutral,
-                )
-                VoxStatusRow(
-                    "Location tracking",
-                    when {
-                        locationTrackingActive -> "Active"
-                        locationConsentGranted -> "Awaiting permissions"
-                        else -> "Not enabled"
-                    },
-                    when {
-                        locationTrackingActive -> VoxStatusTone.Success
-                        locationConsentGranted -> VoxStatusTone.Warning
-                        else -> VoxStatusTone.Warning
-                    },
-                )
-            }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "VOX AGENT",
+                            color = PureWhite,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 18.sp,
+                            letterSpacing = 1.sp,
+                        )
+                        Text(
+                            text = "Connected • Duplex standby",
+                            color = Smoke,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                        )
+                    }
 
-            if (statusMessage.isNotEmpty()) {
-                Text(text = statusMessage, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(Obsidian)
+                            .border(BorderStroke(1.dp, Slate), RoundedCornerShape(50))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(SuccessGreen))
+                        Text(
+                            text = "Opus 48kHz • <180ms",
+                            color = Smoke,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                        )
+                    }
 
-            VoxSectionLabel("Actions")
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (!consentGranted) {
-                    VoxPrimaryButton(text = "Review data sharing", onClick = onReviewDataSharing)
-                } else if (!smsPermissionGranted) {
-                    VoxPrimaryButton(text = "Grant SMS access", onClick = onGrantSmsAccess)
-                } else {
-                    VoxPrimaryButton(text = "Sync now", onClick = onSyncNow)
-                }
+                    Spacer(modifier = Modifier.height(4.dp))
 
-                if (consentGranted) {
-                    VoxSecondaryButton(text = "Turn off data sharing", onClick = onRevokeDataSharing)
-                }
-
-                if (!locationConsentGranted) {
-                    VoxPrimaryButton(text = "Review location tracking", onClick = onReviewLocationTracking)
-                } else if (!activityRecognitionGranted) {
                     VoxPrimaryButton(
-                        text = "Enable activity recognition",
-                        onClick = onGrantActivityRecognition,
-                    )
-                } else if (!backgroundLocationGranted) {
-                    VoxPrimaryButton(
-                        text = "Enable background location",
-                        onClick = onGrantBackgroundLocation,
+                        text = "Talk to Vox",
+                        onClick = {
+                            // Agent voice interaction
+                        },
                     )
                 }
-                if (locationConsentGranted) {
-                    VoxSecondaryButton(
-                        text = "Turn off location tracking",
-                        onClick = onRevokeLocationTracking,
-                    )
-                }
-
-                VoxSecondaryButton(text = "Sign out", onClick = onSignOut)
             }
         }
+
+        // Floating Bottom Navigation Menu (Left Pill + Right Avatar Circle)
+        VoxBottomNav(
+            selectedTab = selectedTab,
+            onTabSelected = { selectedTab = it },
+            avatarUrl = userProfile.avatarUrl,
+            displayName = userProfile.displayName,
+            onAvatarClick = { showProfileSheet = true },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+
+        // Slide-up Profile Sheet when avatar on right is tapped
+        VoxProfileSheet(
+            displayName = userProfile.displayName,
+            email = userProfile.email,
+            avatarUrl = userProfile.avatarUrl,
+            visible = showProfileSheet,
+            onDismiss = { showProfileSheet = false },
+            onSignOut = onSignOut,
+            onSyncProfile = onSyncProfile,
+        )
     }
 }
 
