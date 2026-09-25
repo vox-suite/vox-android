@@ -1,0 +1,47 @@
+package `in`.voxagent.mobile.location
+
+import android.content.Context
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+
+private val json = Json { ignoreUnknownKeys = true }
+
+class PendingSegmentStore(context: Context) {
+    private val prefs = context.getSharedPreferences("location_tracking", Context.MODE_PRIVATE)
+
+    fun openSegmentStart(activity: ActivityKind, atMillis: Long) {
+        prefs.edit()
+            .putString("open_activity", activity.name)
+            .putLong("open_started_at", atMillis)
+            .apply()
+    }
+
+    fun closeOpenSegment(endedAtMillis: Long): LocationSegment? {
+        val activityName = prefs.getString("open_activity", null)
+        val startedAtMillis = prefs.getLong("open_started_at", -1L)
+        prefs.edit().remove("open_activity").remove("open_started_at").apply()
+        if (activityName == null || startedAtMillis < 0 || endedAtMillis <= startedAtMillis) return null
+        val activity = runCatching { ActivityKind.valueOf(activityName) }.getOrNull() ?: return null
+        return LocationSegment(
+            activity = activity,
+            started_at = java.time.Instant.ofEpochMilli(startedAtMillis).toString(),
+            ended_at = java.time.Instant.ofEpochMilli(endedAtMillis).toString(),
+        )
+    }
+
+    fun enqueue(segment: LocationSegment) {
+        val pending = pendingSegments() + segment
+        prefs.edit().putString("pending_segments", json.encodeToString(pending)).apply()
+    }
+
+    fun pendingSegments(): List<LocationSegment> {
+        val raw = prefs.getString("pending_segments", null) ?: return emptyList()
+        return runCatching { json.decodeFromString<List<LocationSegment>>(raw) }.getOrDefault(emptyList())
+    }
+
+    fun clearUploaded(uploaded: List<LocationSegment>) {
+        val remaining = pendingSegments() - uploaded.toSet()
+        prefs.edit().putString("pending_segments", json.encodeToString(remaining)).apply()
+    }
+}
