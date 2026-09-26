@@ -18,14 +18,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
@@ -47,25 +51,29 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
+import dev.chrisbanes.haze.HazeDefaults
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
+import `in`.voxagent.mobile.R
 import `in`.voxagent.mobile.net.VoxHttp
 import `in`.voxagent.mobile.ui.theme.BorderSubtle
 import `in`.voxagent.mobile.ui.theme.CoralPulse
-import `in`.voxagent.mobile.ui.theme.Graphite
 import `in`.voxagent.mobile.ui.theme.Ink
 import `in`.voxagent.mobile.ui.theme.Obsidian
 import `in`.voxagent.mobile.ui.theme.PureWhite
-import `in`.voxagent.mobile.ui.theme.Slate
 import `in`.voxagent.mobile.ui.theme.Smoke
 import `in`.voxagent.mobile.ui.theme.VoidBlack
 import `in`.voxagent.mobile.ui.theme.VoxRed
-import `in`.voxagent.mobile.R
-import android.net.Uri
-import androidx.compose.ui.res.painterResource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
@@ -74,51 +82,77 @@ import java.io.File
 enum class VoxNavTab {
     Home,
     Agent,
+    Layers,
 }
 
 /**
- * Floating bottom navigation menu matching the tactile Raycast / Vox design system.
- * Left: Pill with Home (Layers) and Agent (Bot/User) icon toggles.
- * Right: Circular button displaying the user's avatar from Google Sign-In.
+ * Unified bottom navigation bar matching the tactile Vox design system.
+ * Full-length translucent container with subtle border:
+ * - Left: Vox Logo icon button
+ * - Center: Red elongated pill with Mic icon and "Talk to Vox" text
+ * - Right: Circular button displaying the user's Google avatar
  */
 @Composable
 fun VoxBottomNav(
-    selectedTab: VoxNavTab,
-    onTabSelected: (VoxNavTab) -> Unit,
     avatarUrl: String?,
     displayName: String?,
     onAvatarClick: () -> Unit,
     modifier: Modifier = Modifier,
+    selectedTab: VoxNavTab = VoxNavTab.Home,
+    onTabSelected: (VoxNavTab) -> Unit = {},
+    talkText: String = "Speak",
+    onTalkClick: (() -> Unit)? = null,
+    onLogoClick: (() -> Unit)? = null,
+    hazeState: HazeState? = null,
 ) {
+    val containerSurfaceModifier = if (hazeState != null) {
+        Modifier.hazeEffect(
+            state = hazeState,
+            style = HazeDefaults.style(
+                backgroundColor = VoidBlack.copy(alpha = 0.65f),
+                tint = HazeTint(Ink.copy(alpha = 0.45f)),
+                blurRadius = 24.dp,
+            ),
+        )
+    } else Modifier
+
     Row(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 18.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Left Pill Container with 2 icons
+        // Section 1 (Left): Translucent Pill with Vox Animated Logo + Agent Icon
         Surface(
+            modifier = Modifier
+                .height(52.dp)
+                .clip(RoundedCornerShape(50))
+                .then(containerSurfaceModifier),
             shape = RoundedCornerShape(50),
-            color = VoidBlack,
-            border = BorderStroke(1.dp, BorderSubtle),
+            color = if (hazeState != null) Color.Transparent else VoidBlack.copy(alpha = 0.72f),
+            border = BorderStroke(1.dp, BorderSubtle.copy(alpha = 0.6f)),
             shadowElevation = 8.dp,
         ) {
             Row(
-                modifier = Modifier.padding(4.dp),
+                modifier = Modifier
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 NavPillButton(
                     selected = selectedTab == VoxNavTab.Home,
                     contentDescription = "Home Map",
-                    onClick = { onTabSelected(VoxNavTab.Home) },
+                    onClick = {
+                        if (onLogoClick != null) onLogoClick() else onTabSelected(VoxNavTab.Home)
+                    },
                 ) { tint ->
                     VoxLogo(
-                        size = 22.dp,
+                        size = 24.dp,
                         color = tint,
                         animated = true,
+                        modifier = Modifier.aspectRatio(1f),
                     )
                 }
 
@@ -127,42 +161,126 @@ fun VoxBottomNav(
                     contentDescription = "Agent Cockpit",
                     onClick = { onTabSelected(VoxNavTab.Agent) },
                 ) { tint ->
-                    AgentIcon(tint = tint, modifier = Modifier.size(20.dp))
+                    AgentIcon(
+                        tint = tint,
+                        modifier = Modifier
+                            .size(24.dp)
+                            .aspectRatio(1f),
+                    )
+                }
+
+                NavPillButton(
+                    selected = selectedTab == VoxNavTab.Layers,
+                    contentDescription = "Layers",
+                    onClick = { onTabSelected(VoxNavTab.Layers) },
+                ) { tint ->
+                    LayersIcon(
+                        tint = tint,
+                        modifier = Modifier
+                            .size(28.dp)
+                            .aspectRatio(1f),
+                    )
                 }
             }
         }
 
-        // Right Circle with User Avatar
-        Surface(
-            shape = CircleShape,
-            color = VoidBlack,
-            border = BorderStroke(1.dp, BorderSubtle),
-            shadowElevation = 8.dp,
-            modifier = Modifier
-                .size(52.dp)
-                .clip(CircleShape)
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onAvatarClick,
-                ),
+        Spacer(modifier = Modifier.weight(1f))
+
+        // Right cluster: Mic circular container and Avatar container separated by a gap
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Box(
+            // Section 2: Translucent "Speak" Pill with Mic Icon and matched text (no glow)
+            Surface(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(3.dp),
-                contentAlignment = Alignment.Center,
+                    .height(52.dp)
+                    .clip(RoundedCornerShape(50))
+                    .then(containerSurfaceModifier)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {
+                            if (onTalkClick != null) {
+                                onTalkClick()
+                            } else {
+                                onTabSelected(
+                                    if (selectedTab == VoxNavTab.Agent) VoxNavTab.Home else VoxNavTab.Agent,
+                                )
+                            }
+                        },
+                    ),
+                shape = RoundedCornerShape(50),
+                color = if (hazeState != null) Color.Transparent else VoidBlack.copy(alpha = 0.72f),
+                border = BorderStroke(1.dp, BorderSubtle.copy(alpha = 0.6f)),
+                shadowElevation = 8.dp,
             ) {
-                VoxUserAvatar(
-                    avatarUrl = avatarUrl,
-                    displayName = displayName,
-                    size = 46.dp,
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_mic),
+                        contentDescription = "Speak",
+                        tint = PureWhite,
+                        modifier = Modifier
+                            .size(24.dp)
+                            .aspectRatio(1f),
+                    )
+                }
+            }
+
+            // Section 3: Translucent Circular Avatar Container
+            Surface(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(CircleShape)
+                    .then(containerSurfaceModifier)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onAvatarClick,
+                    ),
+                shape = CircleShape,
+                color = if (hazeState != null) Color.Transparent else VoidBlack.copy(alpha = 0.72f),
+                border = BorderStroke(1.dp, BorderSubtle.copy(alpha = 0.6f)),
+                shadowElevation = 8.dp,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(4.dp),
+                        contentAlignment = Alignment.Center,
+                ) {
+                    VoxUserAvatar(
+                        avatarUrl = avatarUrl,
+                        displayName = displayName,
+                        size = 40.dp,
+                    )
+                }
             }
         }
     }
 }
 
+/**
+ * Microphone icon vector drawn with Compose Canvas.
+ */
+@Composable
+fun MicIcon(
+    modifier: Modifier = Modifier,
+    tint: Color = PureWhite,
+) {
+    Icon(
+        painter = painterResource(R.drawable.ic_mic),
+        contentDescription = null,
+        tint = tint,
+        modifier = modifier.aspectRatio(1f),
+    )
+}
+
+@Suppress("unused")
 @Composable
 private fun NavPillButton(
     selected: Boolean,
@@ -171,14 +289,13 @@ private fun NavPillButton(
     modifier: Modifier = Modifier,
     icon: @Composable (Color) -> Unit,
 ) {
-    val bgColor = if (selected) VoxRed else Color.Transparent
-    val tintColor = if (selected) PureWhite else Smoke
+    val tintColor = if (selected) PureWhite else PureWhite.copy(alpha = 0.38f)
 
     Box(
         modifier = modifier
-            .size(44.dp)
+            .size(40.dp)
             .clip(CircleShape)
-            .background(bgColor)
+            .semantics { this.contentDescription = contentDescription }
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -193,77 +310,28 @@ private fun NavPillButton(
 /**
  * Isometric 3-layer stacked sheets icon matching the reference screenshot.
  */
+@Suppress("unused")
 @Composable
 fun LayersIcon(tint: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val stroke = Stroke(width = w * 0.085f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-        // Top rhombus
-        val topPath = Path().apply {
-            moveTo(w * 0.5f, h * 0.12f)
-            lineTo(w * 0.88f, h * 0.32f)
-            lineTo(w * 0.5f, h * 0.52f)
-            lineTo(w * 0.12f, h * 0.32f)
-            close()
-        }
-        drawPath(topPath, color = tint, style = stroke)
-
-        // Middle chevron
-        val midPath = Path().apply {
-            moveTo(w * 0.12f, h * 0.52f)
-            lineTo(w * 0.5f, h * 0.72f)
-            lineTo(w * 0.88f, h * 0.52f)
-        }
-        drawPath(midPath, color = tint, style = stroke)
-
-        // Bottom chevron
-        val botPath = Path().apply {
-            moveTo(w * 0.12f, h * 0.72f)
-            lineTo(w * 0.5f, h * 0.92f)
-            lineTo(w * 0.88f, h * 0.72f)
-        }
-        drawPath(botPath, color = tint, style = stroke)
-    }
+    Icon(
+        painter = painterResource(R.drawable.ic_stack),
+        contentDescription = "Layers",
+        tint = tint,
+        modifier = modifier.aspectRatio(1f),
+    )
 }
 
 /**
- * Agent / Bot avatar icon matching the second tab in the screenshot.
+ * Geometric shapes icon (circle, cross, triangle, square) matching Tabler ti-icons.
  */
 @Composable
 fun AgentIcon(tint: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val stroke = Stroke(width = w * 0.085f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-
-        // Outer circle
-        drawCircle(
-            color = tint,
-            radius = w * 0.44f,
-            center = Offset(w * 0.5f, h * 0.5f),
-            style = stroke,
-        )
-
-        // Head
-        drawCircle(
-            color = tint,
-            radius = w * 0.15f,
-            center = Offset(w * 0.5f, h * 0.38f),
-            style = stroke,
-        )
-
-        // Shoulders arc
-        val shouldersPath = Path().apply {
-            moveTo(w * 0.25f, h * 0.76f)
-            quadraticBezierTo(
-                w * 0.5f, h * 0.56f,
-                w * 0.75f, h * 0.76f,
-            )
-        }
-        drawPath(shouldersPath, color = tint, style = stroke)
-    }
+    Icon(
+        painter = painterResource(R.drawable.ic_shapes),
+        contentDescription = "Agent Cockpit",
+        tint = tint,
+        modifier = modifier.aspectRatio(1f),
+    )
 }
 
 /**
@@ -295,7 +363,7 @@ fun VoxUserAvatar(
                 }
 
                 val bytes: ByteArray? = if (avatarUrl.startsWith("content://") || avatarUrl.startsWith("file://")) {
-                    context.contentResolver.openInputStream(Uri.parse(avatarUrl))?.use { it.readBytes() }
+                    context.contentResolver.openInputStream(avatarUrl.toUri())?.use { it.readBytes() }
                 } else {
                     val request = Request.Builder()
                         .url(avatarUrl)
@@ -303,7 +371,7 @@ fun VoxUserAvatar(
                         .build()
                     VoxHttp.client.newCall(request).execute().use { response ->
                         if (response.isSuccessful) {
-                            response.body?.bytes()
+                            response.body.bytes()
                         } else null
                     }
                 }
@@ -367,7 +435,12 @@ fun VoxProfileSheet(
     onDismiss: () -> Unit,
     onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
+    hazeState: HazeState? = null,
     onSyncProfile: (() -> Unit)? = null,
+    smsDataSharingGranted: Boolean = false,
+    onReviewDataSharing: (() -> Unit)? = null,
+    onSyncSmsNow: (() -> Unit)? = null,
+    onReviewLocationTracking: (() -> Unit)? = null,
 ) {
     AnimatedVisibility(
         visible = visible,
@@ -385,22 +458,34 @@ fun VoxProfileSheet(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                    .then(
+                        if (hazeState != null) {
+                            Modifier.hazeEffect(
+                                state = hazeState,
+                                style = HazeDefaults.style(
+                                    backgroundColor = VoidBlack.copy(alpha = 0.65f),
+                                    tint = HazeTint(Ink.copy(alpha = 0.5f)),
+                                    blurRadius = 24.dp,
+                                ),
+                            )
+                        } else Modifier,
+                    )
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = {},
                     ),
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                color = Ink,
-                border = BorderStroke(1.dp, BorderSubtle),
+                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                color = if (hazeState != null) Color.Transparent else Ink.copy(alpha = 0.82f),
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
-                        .padding(24.dp),
+                        .padding(horizontal = 20.dp, vertical = 24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
                 ) {
                     // Drag Handle
                     Box(
@@ -434,7 +519,42 @@ fun VoxProfileSheet(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
+                    if (onReviewDataSharing != null || onReviewLocationTracking != null) {
+                        VoxSettingsGroup {
+                            if (onReviewDataSharing != null) {
+                                VoxSettingsRow(
+                                    label = "Data sharing",
+                                    trailingText = if (smsDataSharingGranted) "on" else "Review",
+                                    trailingTone = if (smsDataSharingGranted) VoxStatusTone.Success else VoxStatusTone.Neutral,
+                                    showDivider = (smsDataSharingGranted && onSyncSmsNow != null) || onReviewLocationTracking != null,
+                                    onClick = {
+                                        onDismiss()
+                                        onReviewDataSharing()
+                                    },
+                                )
+                            }
+                            if (smsDataSharingGranted && onSyncSmsNow != null) {
+                                VoxSettingsRow(
+                                    label = "Sync SMS now",
+                                    showDivider = onReviewLocationTracking != null,
+                                    onClick = {
+                                        onDismiss()
+                                        onSyncSmsNow()
+                                    },
+                                )
+                            }
+                            if (onReviewLocationTracking != null) {
+                                VoxSettingsRow(
+                                    label = "Location tracking",
+                                    showDivider = false,
+                                    onClick = {
+                                        onDismiss()
+                                        onReviewLocationTracking()
+                                    },
+                                )
+                            }
+                        }
+                    }
 
                     if (avatarUrl.isNullOrBlank() && onSyncProfile != null) {
                         VoxPrimaryButton(
@@ -446,7 +566,7 @@ fun VoxProfileSheet(
                                     contentDescription = null,
                                     modifier = Modifier.size(18.dp),
                                 )
-                            },
+                                   },
                             onClick = {
                                 onDismiss()
                                 onSyncProfile()
@@ -454,9 +574,9 @@ fun VoxProfileSheet(
                         )
                     }
 
-                    VoxSecondaryButton(
+                    VoxTextButton(
                         text = "Sign Out",
-                        modifier = Modifier.fillMaxWidth(),
+                        tone = CoralPulse,
                         onClick = {
                             onDismiss()
                             onSignOut()

@@ -9,6 +9,7 @@ data class LocationConsentStatus(
     val granted: Boolean,
     val retention_days: Int,
     val granted_at: String? = null,
+    val synced_until: String? = null,
 )
 
 @Serializable

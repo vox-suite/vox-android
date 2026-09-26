@@ -8,6 +8,17 @@
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
+    <!-- Lets CredentialManager discover the Google/Play Services credential
+         provider under API 30+ package-visibility filtering; without this,
+         GetGoogleIdOption can silently fail with "No credentials available"
+         on real (non-emulator) installs. -->
+    <queries>
+        <intent>
+            <action android:name="android.service.credentials.CredentialProviderService" />
+        </intent>
+        <package android:name="com.google.android.gms" />
+    </queries>
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"

@@ -1,9 +1,11 @@
 package `in`.voxagent.mobile.auth
 
 import android.content.Context
+import android.util.Log
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialException
 import `in`.voxagent.mobile.BuildConfig
 import `in`.voxagent.mobile.net.VoxHttp
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
@@ -13,6 +15,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.time.Instant
+
+private const val TAG = "VoxAuth"
 
 private val json = Json { ignoreUnknownKeys = true }
 
@@ -54,13 +58,20 @@ class AuthManager(private val context: Context) {
 
     suspend fun signIn(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
+            Log.d(TAG, "signIn: requesting Google credential (webClientId=${BuildConfig.GOOGLE_WEB_CLIENT_ID})")
             val authResult = requestGoogleAuth()
                 ?: error("No Google ID token returned")
+            Log.d(TAG, "signIn: got Google ID token, exchanging with backend")
             val requestJson = json.encodeToString(
                 AuthExchangeRequest.serializer(),
                 AuthExchangeRequest(id_token = authResult.idToken),
             )
-            val responseJson = VoxHttp.postJson("/v1/auth/exchange", requestJson)
+            val responseJson = try {
+                VoxHttp.postJson("/v1/auth/exchange", requestJson)
+            } catch (e: Exception) {
+                Log.e(TAG, "signIn: backend token exchange failed: ${e::class.simpleName} - ${e.message}", e)
+                throw e
+            }
             val response = json.decodeFromString(
                 AuthExchangeResponse.serializer(),
                 responseJson,
@@ -72,6 +83,10 @@ class AuthManager(private val context: Context) {
                 displayName = authResult.displayName,
                 avatarUrl = authResult.avatarUrl,
             )
+            Log.d(TAG, "signIn: success (user_id=${response.user_id})")
+            Unit
+        }.onFailure { e ->
+            Log.e(TAG, "signIn: failed: ${e::class.simpleName} - ${e.message}", e)
         }
     }
 
@@ -89,7 +104,12 @@ class AuthManager(private val context: Context) {
             .addCredentialOption(option)
             .build()
 
-        val result = credentialManager.getCredential(context, request)
+        val result = try {
+            credentialManager.getCredential(context, request)
+        } catch (e: GetCredentialException) {
+            Log.e(TAG, "requestGoogleAuth: getCredential failed: ${e::class.simpleName} - ${e.message}", e)
+            throw e
+        }
         val credential = result.credential
         if (credential is CustomCredential &&
             credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
@@ -106,6 +126,7 @@ class AuthManager(private val context: Context) {
                 avatarUrl = avatarUrl,
             )
         }
+        Log.e(TAG, "requestGoogleAuth: unexpected credential type: ${credential.type}")
         return null
     }
 
@@ -139,6 +160,8 @@ class AuthManager(private val context: Context) {
                 )
                 UserProfile(displayName = displayName, email = email, avatarUrl = avatarUrl)
             } else null
+        }.onFailure { e ->
+            Log.w(TAG, "tryRefreshProfile: failed: ${e::class.simpleName} - ${e.message}", e)
         }.getOrNull()
     }
 

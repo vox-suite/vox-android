@@ -113,7 +113,12 @@ private class MissionMapController(private val context: Context) {
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    val mapView = MapView(context).apply {
+    val mapView = MapView(
+        context,
+        // TextureView (not the default SurfaceView) so the map composites through the normal
+        // View hierarchy and can be captured for the profile sheet's backdrop blur.
+        org.maplibre.android.maps.MapLibreMapOptions.createFromAttributes(context).textureMode(true),
+    ).apply {
         // Guarantee dark canvas before tiles composite to prevent white flashing
         setBackgroundColor(android.graphics.Color.parseColor("#040506"))
         // Consume all touch events so map gestures (pan, zoom, pinch, tilt) are denied

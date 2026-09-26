@@ -66,6 +66,7 @@ import `in`.voxagent.mobile.map.MissionMapBackground
 import `in`.voxagent.mobile.sms.SmsConsentApi
 import `in`.voxagent.mobile.sms.SmsConsentStatus
 import `in`.voxagent.mobile.sms.SmsSyncWorker
+import `in`.voxagent.mobile.sms.SyncPrefs
 import `in`.voxagent.mobile.ui.ConsentScreen
 import `in`.voxagent.mobile.ui.LocationConsentScreen
 import `in`.voxagent.mobile.ui.VoxAtmosphereBackground
@@ -86,6 +87,8 @@ import `in`.voxagent.mobile.ui.theme.SuccessGreen
 import `in`.voxagent.mobile.ui.theme.VoidBlack
 import `in`.voxagent.mobile.ui.theme.VoxTheme
 import `in`.voxagent.mobile.ui.voxGrain
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
@@ -129,11 +132,20 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
     var statusMessage by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
 
+    LaunchedEffect(smsPermissionGranted) {
+        // Re-applied on every launch (not just a fresh grant) so an interval change
+        // here actually reaches devices that already granted SMS access.
+        if (smsPermissionGranted) schedulePeriodicSync(activity)
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         smsPermissionGranted = granted
-        if (granted) schedulePeriodicSync(activity)
+        if (granted) {
+            schedulePeriodicSync(activity)
+            triggerImmediateSync(activity)
+        }
     }
 
     var locationPermissionGranted by remember {
@@ -181,10 +193,15 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
         locationPermissionGranted,
         locationConsentStatus,
     ) {
-        val trackingReady = locationConsentStatus?.granted == true &&
-            locationPermissionGranted && activityRecognitionGranted && backgroundLocationGranted
-        if (trackingReady) {
-            LocationTrackingManager.start(activity)
+        if (locationConsentStatus?.granted != true) return@LaunchedEffect
+        when {
+            // Each of these is its own separate OS permission dialog, requested
+            // one at a time — Android requires background location specifically
+            // to be asked for only after foreground location is already granted.
+            !locationPermissionGranted -> locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            !activityRecognitionGranted -> activityRecognitionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+            !backgroundLocationGranted -> backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+            else -> LocationTrackingManager.start(activity)
         }
     }
 
@@ -192,7 +209,16 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
         if (!signedIn) return@LaunchedEffect
         val token = authManager.currentToken() ?: return@LaunchedEffect
         runCatching { SmsConsentApi.getStatus(token) }
-            .onSuccess { consentStatus = it }
+            .onSuccess { status ->
+                consentStatus = status
+                status.synced_until?.let { syncedUntil ->
+                    val serverMillis = java.time.Instant.parse(syncedUntil).toEpochMilli()
+                    val syncPrefs = SyncPrefs(activity)
+                    if (serverMillis > syncPrefs.lastSyncedMillis()) {
+                        syncPrefs.setLastSyncedMillis(serverMillis)
+                    }
+                }
+            }
         runCatching { LocationConsentApi.getStatus(token) }
             .onSuccess { locationConsentStatus = it }
         if (!locationPermissionGranted) {
@@ -210,7 +236,8 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
                     statusMessage = if (result.isSuccess) {
                         ""
                     } else {
-                        "Sign-in failed: ${result.exceptionOrNull()?.message}"
+                        val error = result.exceptionOrNull()
+                        "Sign-in failed: ${error?.let { it::class.simpleName }}: ${error?.message}"
                     }
                 }
             },
@@ -232,6 +259,9 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
                         .onSuccess {
                             consentStatus = it
                             showConsentScreen = false
+                            if (!smsPermissionGranted) {
+                                permissionLauncher.launch(Manifest.permission.READ_SMS)
+                            }
                         }
                         .onFailure { consentError = "Couldn't save: ${it}" }
                     busy = false
@@ -280,6 +310,7 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
     HomeScreen(
         userProfile = userProfileState,
         locationPermissionGranted = locationPermissionGranted,
+        smsDataSharingGranted = consentStatus?.granted == true,
         onSignOut = {
             authManager.signOut()
             signedIn = false
@@ -293,6 +324,9 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
                 }
             }
         },
+        onReviewDataSharing = { showConsentScreen = true },
+        onSyncSmsNow = { triggerImmediateSync(activity) },
+        onReviewLocationTracking = { showLocationConsentScreen = true },
     )
 }
 
@@ -375,13 +409,19 @@ private fun SignInContent(statusMessage: String, onSignIn: () -> Unit) {
 private fun HomeScreen(
     userProfile: UserProfile,
     locationPermissionGranted: Boolean,
+    smsDataSharingGranted: Boolean,
     onSignOut: () -> Unit,
     onSyncProfile: (() -> Unit)? = null,
+    onReviewDataSharing: (() -> Unit)? = null,
+    onSyncSmsNow: (() -> Unit)? = null,
+    onReviewLocationTracking: (() -> Unit)? = null,
 ) {
     var selectedTab by remember { mutableStateOf(VoxNavTab.Home) }
     var showProfileSheet by remember { mutableStateOf(false) }
+    val hazeState = remember { HazeState() }
 
     Box(modifier = Modifier.fillMaxSize()) {
+      Box(modifier = Modifier.fillMaxSize().hazeSource(state = hazeState)) {
         // Fullscreen Ambient 3D Mission Map
         MissionMapBackground(
             modifier = Modifier.fillMaxSize(),
@@ -465,15 +505,18 @@ private fun HomeScreen(
             }
         }
 
-        // Floating Bottom Navigation Menu (Left Pill + Right Avatar Circle)
-        VoxBottomNav(
-            selectedTab = selectedTab,
-            onTabSelected = { selectedTab = it },
-            avatarUrl = userProfile.avatarUrl,
-            displayName = userProfile.displayName,
-            onAvatarClick = { showProfileSheet = true },
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
+      }
+
+      // Floating Bottom Navigation Menu (Unified Translucent Container)
+      VoxBottomNav(
+          selectedTab = selectedTab,
+          onTabSelected = { selectedTab = it },
+          avatarUrl = userProfile.avatarUrl,
+          displayName = userProfile.displayName,
+          onAvatarClick = { showProfileSheet = true },
+          hazeState = hazeState,
+          modifier = Modifier.align(Alignment.BottomCenter),
+      )
 
         // Slide-up Profile Sheet when avatar on right is tapped
         VoxProfileSheet(
@@ -481,18 +524,30 @@ private fun HomeScreen(
             email = userProfile.email,
             avatarUrl = userProfile.avatarUrl,
             visible = showProfileSheet,
+            hazeState = hazeState,
             onDismiss = { showProfileSheet = false },
             onSignOut = onSignOut,
             onSyncProfile = onSyncProfile,
+            smsDataSharingGranted = smsDataSharingGranted,
+            onReviewDataSharing = onReviewDataSharing,
+            onSyncSmsNow = onSyncSmsNow,
+            onReviewLocationTracking = onReviewLocationTracking,
         )
     }
 }
 
 private fun schedulePeriodicSync(activity: ComponentActivity) {
-    val request = PeriodicWorkRequestBuilder<SmsSyncWorker>(15, TimeUnit.MINUTES).build()
+    val request = PeriodicWorkRequestBuilder<SmsSyncWorker>(1, TimeUnit.HOURS).build()
     WorkManager.getInstance(activity).enqueueUniquePeriodicWork(
         SmsSyncWorker.UNIQUE_WORK_NAME,
-        ExistingPeriodicWorkPolicy.KEEP,
+        // UPDATE (not KEEP) so this change actually replaces the 15-minute schedule
+        // already running on devices that installed the app before this change.
+        ExistingPeriodicWorkPolicy.UPDATE,
         request,
     )
+}
+
+private fun triggerImmediateSync(activity: ComponentActivity) {
+    val request = OneTimeWorkRequestBuilder<SmsSyncWorker>().build()
+    WorkManager.getInstance(activity).enqueue(request)
 }

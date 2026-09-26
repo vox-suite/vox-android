@@ -16,4 +16,8 @@ data class LocationSegment(
     val activity: ActivityKind,
     val started_at: String,
     val ended_at: String,
+    // Only set for a `still` segment long enough to count as a visit — a single
+    // point sampled once, never a continuous trail.
+    val lat: Double? = null,
+    val lng: Double? = null,
 )
