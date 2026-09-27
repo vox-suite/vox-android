@@ -55,8 +55,10 @@ import org.maplibre.geojson.Polygon
 import kotlin.math.min
 
 private const val STYLE_URL = "https://tiles.openfreemap.org/styles/dark"
-private const val FALLBACK_LAT = 13.0827
-private const val FALLBACK_LNG = 80.2707
+// Open ocean, not a real place: renders as a blank ambient background until a
+// real location is known, instead of implying the user is somewhere they aren't.
+private const val FALLBACK_LAT = 0.0
+private const val FALLBACK_LNG = 0.0
 private const val MAP_ZOOM = 16.0
 private const val MAP_PITCH = 62.0
 private const val MAP_BEARING = -28.0
