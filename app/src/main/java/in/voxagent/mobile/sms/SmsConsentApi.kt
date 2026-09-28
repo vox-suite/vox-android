@@ -19,7 +19,7 @@ private val json = Json { ignoreUnknownKeys = true }
 
 object SmsConsentApi {
     suspend fun getStatus(bearerToken: String): SmsConsentStatus {
-        val responseJson = VoxHttp.getJson("/v1/sms/consent", bearerToken)
+        val responseJson = VoxHttp.postJson("/v1/sms/consent/get", bearerToken = bearerToken)
         return json.decodeFromString(SmsConsentStatus.serializer(), responseJson)
     }
 
@@ -28,11 +28,11 @@ object SmsConsentApi {
             GrantConsentRequest.serializer(),
             GrantConsentRequest(retention_days = retentionDays),
         )
-        val responseJson = VoxHttp.postJson("/v1/sms/consent", requestJson, bearerToken)
+        val responseJson = VoxHttp.postJson("/v1/sms/consent/grant", requestJson, bearerToken)
         return json.decodeFromString(SmsConsentStatus.serializer(), responseJson)
     }
 
     suspend fun revoke(bearerToken: String) {
-        VoxHttp.deleteJson("/v1/sms/consent", bearerToken)
+        VoxHttp.postJson("/v1/sms/consent/revoke", bearerToken = bearerToken)
     }
 }

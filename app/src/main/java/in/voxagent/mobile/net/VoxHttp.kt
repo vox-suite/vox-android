@@ -17,21 +17,9 @@ object VoxHttp {
 
     private val jsonMediaType = "application/json".toMediaType()
 
-    suspend fun getJson(path: String, bearerToken: String? = null): String =
-        execute(Request.Builder().url(url(path)).get(), bearerToken)
-
-    suspend fun postJson(path: String, body: String, bearerToken: String? = null): String =
+    suspend fun postJson(path: String, body: String = "{}", bearerToken: String? = null): String =
         execute(
             Request.Builder().url(url(path)).post(body.toRequestBody(jsonMediaType)),
-            bearerToken,
-        )
-
-    suspend fun deleteJson(path: String, bearerToken: String? = null): String =
-        execute(Request.Builder().url(url(path)).delete(), bearerToken)
-
-    suspend fun patchJson(path: String, body: String, bearerToken: String? = null): String =
-        execute(
-            Request.Builder().url(url(path)).patch(body.toRequestBody(jsonMediaType)),
             bearerToken,
         )
 

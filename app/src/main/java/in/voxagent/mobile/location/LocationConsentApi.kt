@@ -19,7 +19,7 @@ private val json = Json { ignoreUnknownKeys = true }
 
 object LocationConsentApi {
     suspend fun getStatus(bearerToken: String): LocationConsentStatus {
-        val responseJson = VoxHttp.getJson("/v1/location/consent", bearerToken)
+        val responseJson = VoxHttp.postJson("/v1/location/consent/get", bearerToken = bearerToken)
         return json.decodeFromString(LocationConsentStatus.serializer(), responseJson)
     }
 
@@ -28,11 +28,11 @@ object LocationConsentApi {
             GrantConsentRequest.serializer(),
             GrantConsentRequest(retention_days = retentionDays),
         )
-        val responseJson = VoxHttp.postJson("/v1/location/consent", requestJson, bearerToken)
+        val responseJson = VoxHttp.postJson("/v1/location/consent/grant", requestJson, bearerToken)
         return json.decodeFromString(LocationConsentStatus.serializer(), responseJson)
     }
 
     suspend fun revoke(bearerToken: String) {
-        VoxHttp.deleteJson("/v1/location/consent", bearerToken)
+        VoxHttp.postJson("/v1/location/consent/revoke", bearerToken = bearerToken)
     }
 }
