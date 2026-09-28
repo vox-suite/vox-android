@@ -24,6 +24,10 @@ android {
         versionCode = 14
         versionName = "0.1.44"
 
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
+
         buildConfigField(
             "String",
             "GOOGLE_WEB_CLIENT_ID",
@@ -50,6 +54,13 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    ndkVersion = "30.0.16248370"
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/whisper/CMakeLists.txt")
+        }
     }
 }
 
@@ -78,6 +89,7 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:5.5.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("androidx.security:security-crypto:1.1.0")
+    implementation("javazoom:jlayer:1.0.1")
     //noinspection GradleDependency
     implementation("dev.chrisbanes.haze:haze:1.5.3")
 }

@@ -36,6 +36,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -52,6 +54,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import `in`.voxagent.mobile.voice.VoiceEvent
+import `in`.voxagent.mobile.voice.VoiceSession
+import `in`.voxagent.mobile.voice.VoiceStatus
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
@@ -464,6 +469,43 @@ private fun HomeScreen(
     var showProfileSheet by remember { mutableStateOf(false) }
     val hazeState = remember { HazeState() }
 
+    val voiceContext = LocalContext.current
+    val voiceSession = remember { VoiceSession(voiceContext) }
+    var voiceStatus by remember { mutableStateOf(VoiceStatus.IDLE) }
+    var voiceSubtitle by remember { mutableStateOf("Duplex standby") }
+    var recordAudioGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                voiceContext,
+                Manifest.permission.RECORD_AUDIO,
+            ) == PackageManager.PERMISSION_GRANTED,
+        )
+    }
+    val recordAudioLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        recordAudioGranted = granted
+        if (granted) voiceSession.start()
+    }
+    LaunchedEffect(voiceSession) {
+        voiceSession.status.collect { voiceStatus = it }
+    }
+    LaunchedEffect(voiceSession) {
+        voiceSession.events.collect { event ->
+            voiceSubtitle = when (event) {
+                is VoiceEvent.UserTranscript -> "You: ${event.text}"
+                is VoiceEvent.Delta -> "Vox: ${event.text}"
+                is VoiceEvent.Thinking -> "Thinking…"
+                is VoiceEvent.Done -> "Duplex standby"
+                is VoiceEvent.Interrupted -> "Listening…"
+                is VoiceEvent.Error -> "Error: ${event.message}"
+            }
+        }
+    }
+    DisposableEffect(voiceSession) {
+        onDispose { voiceSession.stop() }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
       Box(modifier = Modifier.fillMaxSize().hazeSource(state = hazeState)) {
         // Fullscreen Ambient 3D Mission Map
@@ -512,7 +554,7 @@ private fun HomeScreen(
                             letterSpacing = 1.sp,
                         )
                         Text(
-                            text = "Connected • Duplex standby",
+                            text = voiceSubtitle,
                             color = Smoke,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 12.sp,
@@ -540,9 +582,22 @@ private fun HomeScreen(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     VoxPrimaryButton(
-                        text = "Talk to Vox",
+                        text = when (voiceStatus) {
+                            VoiceStatus.IDLE, VoiceStatus.ERROR -> "Talk to Vox"
+                            VoiceStatus.CONNECTING -> "Connecting…"
+                            VoiceStatus.ACTIVE -> "End Call"
+                        },
                         onClick = {
-                            // Agent voice interaction
+                            when (voiceStatus) {
+                                VoiceStatus.IDLE, VoiceStatus.ERROR -> {
+                                    if (recordAudioGranted) {
+                                        voiceSession.start()
+                                    } else {
+                                        recordAudioLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                    }
+                                }
+                                VoiceStatus.ACTIVE, VoiceStatus.CONNECTING -> voiceSession.stop()
+                            }
                         },
                     )
                 }
