@@ -21,8 +21,8 @@ android {
         applicationId = "in.voxagent.mobile"
         minSdk = 26
         targetSdk = 37
-        versionCode = 12
-        versionName = "0.1.42"
+        versionCode = 14
+        versionName = "0.1.44"
 
         buildConfigField(
             "String",
