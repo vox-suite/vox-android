@@ -192,6 +192,7 @@ fun SpanScreen(
             onPrev = ::goBack,
             onNext = ::goForward,
             onModeChange = { mode = it },
+            onRefresh = { scope.launch { refresh(showSpinner = true) } },
         )
 
         if (error != null) {
@@ -258,6 +259,7 @@ private fun SpanHeader(
     onPrev: () -> Unit,
     onNext: () -> Unit,
     onModeChange: (SpanViewMode) -> Unit,
+    onRefresh: () -> Unit,
 ) {
     val rangeLabel = remember(mode, anchor, days) {
         when (mode) {
@@ -346,25 +348,51 @@ private fun SpanHeader(
                 }
             }
 
-            // Prev / Next nav
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .height(32.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Obsidian)
-                    .border(1.dp, BorderSubtle, RoundedCornerShape(8.dp)),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                // Manual refresh
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .size(32.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Obsidian)
+                        .border(1.dp, BorderSubtle, RoundedCornerShape(8.dp))
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
-                            onClick = onPrev,
+                            enabled = !loading,
+                            onClick = onRefresh,
                         ),
                 ) {
+                    Text(
+                        text = "⟳",
+                        color = if (loading) Smoke.copy(alpha = 0.4f) else Color.White.copy(alpha = 0.7f),
+                        fontSize = 14.sp,
+                    )
+                }
+
+                // Prev / Next nav
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .height(32.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Obsidian)
+                        .border(1.dp, BorderSubtle, RoundedCornerShape(8.dp)),
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onPrev,
+                            ),
+                    ) {
                     Canvas(modifier = Modifier.size(10.dp)) {
                         val path = androidx.compose.ui.graphics.Path().apply {
                             moveTo(size.width * 0.7f, 0f)
@@ -416,6 +444,7 @@ private fun SpanHeader(
                     }
                 }
             }
+        }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
