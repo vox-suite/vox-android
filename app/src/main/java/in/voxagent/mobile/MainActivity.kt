@@ -220,12 +220,12 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
         runCatching { SmsConsentApi.getStatus(token) }
             .onSuccess { status ->
                 consentStatus = status
-                status.synced_until?.let { syncedUntil ->
-                    val serverMillis = java.time.Instant.parse(syncedUntil).toEpochMilli()
-                    val syncPrefs = SyncPrefs(activity)
-                    if (serverMillis > syncPrefs.lastSyncedMillis()) {
-                        syncPrefs.setLastSyncedMillis(serverMillis)
-                    }
+                if (status.granted) {
+                    val serverMillis = status.synced_until
+                        ?.let { java.time.Instant.parse(it).toEpochMilli() }
+                    val historyStart = System.currentTimeMillis() -
+                        status.retention_days * MILLIS_PER_DAY
+                    SyncPrefs(activity).setLastSyncedMillis(serverMillis ?: historyStart)
                 }
             }
         runCatching { LocationConsentApi.getStatus(token) }
@@ -562,6 +562,8 @@ private fun HomeScreen(
         )
     }
 }
+
+private const val MILLIS_PER_DAY = 24L * 60 * 60 * 1000
 
 private fun schedulePeriodicSync(activity: ComponentActivity) {
     val request = PeriodicWorkRequestBuilder<SmsSyncWorker>(1, TimeUnit.HOURS).build()
