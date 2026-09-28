@@ -60,6 +60,7 @@ import `in`.voxagent.mobile.ui.theme.Ink
 import `in`.voxagent.mobile.ui.theme.Obsidian
 import `in`.voxagent.mobile.ui.theme.PureWhite
 import `in`.voxagent.mobile.ui.theme.Smoke
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -124,6 +125,8 @@ fun SpanScreen(
             val from = days.first().atStartOfDay(ZoneId.systemDefault()).toInstant().toString()
             val to = days.last().plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toString()
             spans = SpanApi.listSpans(from = from, to = to, bearerToken = token)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             error = e.message
         } finally {
@@ -212,7 +215,7 @@ fun SpanScreen(
                 scope.launch {
                     val from = days.first().atStartOfDay(ZoneId.systemDefault()).toInstant().toString()
                     val to = days.last().plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toString()
-                    spans = try { SpanApi.listSpans(from = from, to = to, bearerToken = token) } catch (_: Exception) { spans }
+                    spans = try { SpanApi.listSpans(from = from, to = to, bearerToken = token) } catch (e: CancellationException) { throw e } catch (_: Exception) { spans }
                 }
             },
         )
@@ -1101,6 +1104,8 @@ private fun SpanDetailSheet(
                                 try {
                                     SpanApi.deleteSpan(span.id, token)
                                     onDeleted()
+                                } catch (e: CancellationException) {
+                                    throw e
                                 } catch (e: Exception) {
                                     error = e.message
                                 } finally {
