@@ -1,9 +1,12 @@
 package `in`.voxagent.mobile.sms
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.util.Log
 import android.view.Gravity
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import `in`.voxagent.mobile.auth.AuthManager
@@ -20,6 +23,13 @@ class SmsSyncWorker(
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val token = AuthManager(applicationContext).currentToken()
             ?: return@withContext Result.retry().also { Log.w(TAG, "no auth token, retrying later") }
+
+        if (ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.READ_SMS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            Log.w(TAG, "READ_SMS not granted, nothing can be read")
+            return@withContext Result.failure()
+        }
 
         val reader = SmsReader(applicationContext)
         val syncPrefs = SyncPrefs(applicationContext)

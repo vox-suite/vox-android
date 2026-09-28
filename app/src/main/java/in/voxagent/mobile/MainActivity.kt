@@ -226,6 +226,9 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
                     val historyStart = System.currentTimeMillis() -
                         status.retention_days * MILLIS_PER_DAY
                     SyncPrefs(activity).setLastSyncedMillis(serverMillis ?: historyStart)
+                    if (!smsPermissionGranted) {
+                        permissionLauncher.launch(Manifest.permission.READ_SMS)
+                    }
                 }
             }
         runCatching { LocationConsentApi.getStatus(token) }
@@ -336,7 +339,13 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
             }
         },
         onReviewDataSharing = { showConsentScreen = true },
-        onSyncSmsNow = { triggerImmediateSync(activity) },
+        onSyncSmsNow = {
+            if (smsPermissionGranted) {
+                triggerImmediateSync(activity)
+            } else {
+                permissionLauncher.launch(Manifest.permission.READ_SMS)
+            }
+        },
         onReviewLocationTracking = { showLocationConsentScreen = true },
     )
 }
