@@ -4,6 +4,9 @@ import android.os.SystemClock
 import android.util.Log
 import `in`.voxagent.mobile.BuildConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -19,6 +22,9 @@ object VoxHttp {
         .build()
 
     private val jsonMediaType = "application/json".toMediaType()
+
+    private val _unauthorized = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val unauthorized: SharedFlow<Unit> = _unauthorized.asSharedFlow()
 
     suspend fun postJson(path: String, body: String = "{}", bearerToken: String? = null): String =
         execute(
@@ -53,6 +59,9 @@ object VoxHttp {
                         TAG,
                         "<- ${response.code} $target ${elapsed}ms $tokenInfo body=${responseBody.take(300)}",
                     )
+                    if (response.code == 401 && bearerToken != null) {
+                        _unauthorized.tryEmit(Unit)
+                    }
                     throw VoxHttpException(response.code, responseBody)
                 }
                 Log.d(TAG, "<- ${response.code} $target ${elapsed}ms")

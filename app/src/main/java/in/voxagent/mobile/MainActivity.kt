@@ -59,6 +59,7 @@ import android.os.Build
 import `in`.voxagent.mobile.R
 import `in`.voxagent.mobile.auth.AuthError
 import `in`.voxagent.mobile.auth.AuthManager
+import `in`.voxagent.mobile.net.VoxHttp
 import `in`.voxagent.mobile.auth.UserProfile
 import `in`.voxagent.mobile.location.LocationConsentApi
 import `in`.voxagent.mobile.location.LocationConsentStatus
@@ -121,6 +122,12 @@ class MainActivity : ComponentActivity() {
 fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
     val scope = rememberCoroutineScope()
     var signedIn by remember { mutableStateOf(authManager.currentToken() != null) }
+    LaunchedEffect(Unit) {
+        VoxHttp.unauthorized.collect {
+            authManager.signOut()
+            signedIn = false
+        }
+    }
     var consentStatus by remember { mutableStateOf<SmsConsentStatus?>(null) }
     var showConsentScreen by remember { mutableStateOf(false) }
     var smsPermissionGranted by remember {
