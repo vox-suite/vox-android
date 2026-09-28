@@ -83,6 +83,7 @@ enum class VoxNavTab {
     Home,
     Agent,
     Layers,
+    Span,
 }
 
 /**
@@ -157,27 +158,14 @@ fun VoxBottomNav(
                 }
 
                 NavPillButton(
-                    selected = selectedTab == VoxNavTab.Agent,
-                    contentDescription = "Agent Cockpit",
-                    onClick = { onTabSelected(VoxNavTab.Agent) },
+                    selected = selectedTab == VoxNavTab.Span,
+                    contentDescription = "Span",
+                    onClick = { onTabSelected(VoxNavTab.Span) },
                 ) { tint ->
-                    AgentIcon(
+                    SpanIcon(
                         tint = tint,
                         modifier = Modifier
                             .size(24.dp)
-                            .aspectRatio(1f),
-                    )
-                }
-
-                NavPillButton(
-                    selected = selectedTab == VoxNavTab.Layers,
-                    contentDescription = "Layers",
-                    onClick = { onTabSelected(VoxNavTab.Layers) },
-                ) { tint ->
-                    LayersIcon(
-                        tint = tint,
-                        modifier = Modifier
-                            .size(28.dp)
                             .aspectRatio(1f),
                     )
                 }
@@ -324,6 +312,7 @@ fun LayersIcon(tint: Color, modifier: Modifier = Modifier) {
 /**
  * Geometric shapes icon (circle, cross, triangle, square) matching Tabler ti-icons.
  */
+@Suppress("unused")
 @Composable
 fun AgentIcon(tint: Color, modifier: Modifier = Modifier) {
     Icon(
@@ -332,6 +321,43 @@ fun AgentIcon(tint: Color, modifier: Modifier = Modifier) {
         tint = tint,
         modifier = modifier.aspectRatio(1f),
     )
+}
+
+/**
+ * Gantt-chart timeline icon — mirrors the GanttChart lucide icon used on desktop
+ * for the Span tab. Drawn as three staggered horizontal bars of varying width.
+ */
+@Composable
+fun SpanIcon(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val strokeW = w * 0.10f
+        val radius = strokeW / 2f
+        val barH = strokeW
+
+        // Row 1: full bar from 0.1 to 0.9
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(w * 0.10f, h * 0.20f - barH / 2),
+            size = androidx.compose.ui.geometry.Size(w * 0.80f, barH),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius),
+        )
+        // Row 2: shorter bar from 0.1 to 0.55
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(w * 0.10f, h * 0.50f - barH / 2),
+            size = androidx.compose.ui.geometry.Size(w * 0.45f, barH),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius),
+        )
+        // Row 3: bar shifted right from 0.35 to 0.90
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(w * 0.35f, h * 0.80f - barH / 2),
+            size = androidx.compose.ui.geometry.Size(w * 0.55f, barH),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius),
+        )
+    }
 }
 
 /**

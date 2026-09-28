@@ -29,6 +29,12 @@ object VoxHttp {
     suspend fun deleteJson(path: String, bearerToken: String? = null): String =
         execute(Request.Builder().url(url(path)).delete(), bearerToken)
 
+    suspend fun patchJson(path: String, body: String, bearerToken: String? = null): String =
+        execute(
+            Request.Builder().url(url(path)).patch(body.toRequestBody(jsonMediaType)),
+            bearerToken,
+        )
+
     private fun url(path: String) = BuildConfig.VOX_API_BASE_URL.trimEnd('/') + path
 
     private suspend fun execute(

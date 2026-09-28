@@ -57,6 +57,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import android.os.Build
 import `in`.voxagent.mobile.R
+import `in`.voxagent.mobile.auth.AuthError
 import `in`.voxagent.mobile.auth.AuthManager
 import `in`.voxagent.mobile.auth.UserProfile
 import `in`.voxagent.mobile.location.LocationConsentApi
@@ -76,6 +77,7 @@ import `in`.voxagent.mobile.ui.VoxNavTab
 import `in`.voxagent.mobile.ui.VoxPrimaryButton
 import `in`.voxagent.mobile.ui.VoxProfileSheet
 import `in`.voxagent.mobile.ui.VoxWordmark
+import `in`.voxagent.mobile.spans.SpanScreen
 import `in`.voxagent.mobile.ui.theme.BorderSubtle
 import `in`.voxagent.mobile.ui.theme.CoralPulse
 import `in`.voxagent.mobile.ui.theme.Ink
@@ -237,7 +239,8 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
                         ""
                     } else {
                         val error = result.exceptionOrNull()
-                        "Sign-in failed: ${error?.let { it::class.simpleName }}: ${error?.message}"
+                        if (error is AuthError) error.message ?: "Sign-in failed"
+                        else "Sign-in failed: ${error?.let { it::class.simpleName }}: ${error?.message}"
                     }
                 }
             },
@@ -308,6 +311,7 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
     }
 
     HomeScreen(
+        token = authManager.currentToken(),
         userProfile = userProfileState,
         locationPermissionGranted = locationPermissionGranted,
         smsDataSharingGranted = consentStatus?.granted == true,
@@ -407,6 +411,7 @@ private fun SignInContent(statusMessage: String, onSignIn: () -> Unit) {
  */
 @Composable
 private fun HomeScreen(
+    token: String?,
     userProfile: UserProfile,
     locationPermissionGranted: Boolean,
     smsDataSharingGranted: Boolean,
@@ -505,6 +510,21 @@ private fun HomeScreen(
             }
         }
 
+      }
+
+      // Span Timeline Tab — full-screen overlay, drawn ABOVE the map but BELOW the nav bar
+      AnimatedVisibility(
+          visible = selectedTab == VoxNavTab.Span,
+          enter = fadeIn() + slideInVertically(initialOffsetY = { it / 4 }),
+          exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 4 }),
+          modifier = Modifier.fillMaxSize(),
+      ) {
+          if (token != null) {
+              SpanScreen(
+                  token = token,
+                  modifier = Modifier.fillMaxSize(),
+              )
+          }
       }
 
       // Floating Bottom Navigation Menu (Unified Translucent Container)

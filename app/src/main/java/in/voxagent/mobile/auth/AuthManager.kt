@@ -6,6 +6,7 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
 import `in`.voxagent.mobile.BuildConfig
 import `in`.voxagent.mobile.net.VoxHttp
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
@@ -43,6 +44,24 @@ private data class GoogleAuthResult(
     val displayName: String?,
     val avatarUrl: String?,
 )
+
+/**
+ * Typed errors that can occur during Google sign-in so callers can react
+ * without inspecting raw framework exceptions.
+ */
+sealed class AuthError(message: String, cause: Throwable? = null) : Exception(message, cause) {
+    /** No Google account is present on the device, or GMS couldn't reach Google servers. */
+    class NoCredential(cause: Throwable) :
+        AuthError("No Google account found. Please add a Google account in device Settings.", cause)
+
+    /** GMS returned a credential type the app doesn't understand. */
+    class UnexpectedCredentialType(type: String) :
+        AuthError("Unexpected credential type: $type")
+
+    /** Any other CredentialManager error (cancelled, interrupted, etc.). */
+    class CredentialError(cause: Throwable) :
+        AuthError(cause.message ?: "Credential error", cause)
+}
 
 class AuthManager(private val context: Context) {
     private val credentialManager = CredentialManager.create(context)
@@ -106,9 +125,14 @@ class AuthManager(private val context: Context) {
 
         val result = try {
             credentialManager.getCredential(context, request)
+        } catch (e: NoCredentialException) {
+            // GMS could not find a usable Google account — either none is added on the device,
+            // or the GMS network call to verify the account failed (ERR_NAME_NOT_RESOLVED, etc.).
+            Log.e(TAG, "requestGoogleAuth: no credential available: ${e.message}", e)
+            throw AuthError.NoCredential(e)
         } catch (e: GetCredentialException) {
             Log.e(TAG, "requestGoogleAuth: getCredential failed: ${e::class.simpleName} - ${e.message}", e)
-            throw e
+            throw AuthError.CredentialError(e)
         }
         val credential = result.credential
         if (credential is CustomCredential &&
@@ -127,7 +151,7 @@ class AuthManager(private val context: Context) {
             )
         }
         Log.e(TAG, "requestGoogleAuth: unexpected credential type: ${credential.type}")
-        return null
+        throw AuthError.UnexpectedCredentialType(credential.type)
     }
 
     suspend fun tryRefreshProfile(): UserProfile? = withContext(Dispatchers.IO) {
