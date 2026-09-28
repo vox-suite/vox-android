@@ -15,6 +15,8 @@ data class SmsConsentStatus(
 @Serializable
 private data class GrantConsentRequest(val retention_days: Int)
 
+const val SMS_RETENTION_DAYS = 256
+
 private val json = Json { ignoreUnknownKeys = true }
 
 object SmsConsentApi {
@@ -23,7 +25,7 @@ object SmsConsentApi {
         return json.decodeFromString(SmsConsentStatus.serializer(), responseJson)
     }
 
-    suspend fun grant(bearerToken: String, retentionDays: Int = 90): SmsConsentStatus {
+    suspend fun grant(bearerToken: String, retentionDays: Int = SMS_RETENTION_DAYS): SmsConsentStatus {
         val requestJson = json.encodeToString(
             GrantConsentRequest.serializer(),
             GrantConsentRequest(retention_days = retentionDays),

@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import `in`.voxagent.mobile.ui.theme.CoralPulse
+import `in`.voxagent.mobile.sms.SMS_RETENTION_DAYS
 import `in`.voxagent.mobile.ui.theme.Slate
 import `in`.voxagent.mobile.ui.theme.VoxFunnelDisplayFontFamily
 
@@ -32,7 +33,7 @@ private val consentPoints = listOf(
     ),
     ConsentPoint(
         "What's kept",
-        "Extracted events (title, category, time) appear in your Vox Timeline. Retained for 90 days by default, then automatically deleted.",
+        "Extracted events (title, category, time) appear in your Vox Timeline. Retained for $SMS_RETENTION_DAYS days by default, then automatically deleted.",
     ),
     ConsentPoint(
         "Your control",
