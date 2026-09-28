@@ -561,6 +561,7 @@ private fun HomeScreen(
           if (token != null) {
               SpanScreen(
                   token = token,
+                  active = selectedTab == VoxNavTab.Span,
                   modifier = Modifier.fillMaxSize(),
               )
           }

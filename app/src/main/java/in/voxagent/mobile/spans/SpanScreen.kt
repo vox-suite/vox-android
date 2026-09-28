@@ -53,6 +53,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import `in`.voxagent.mobile.ui.theme.BorderSubtle
 import `in`.voxagent.mobile.ui.theme.CoralPulse
 import `in`.voxagent.mobile.ui.theme.ElectricSky
@@ -85,9 +88,12 @@ enum class SpanViewMode { Day, Week, Month }
 
 // ── SpanScreen ───────────────────────────────────────────────────────────────
 
+private const val STALE_REFRESH_INTERVAL_MS = 3 * 60 * 1000L
+
 @Composable
 fun SpanScreen(
     token: String,
+    active: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     var mode by remember { mutableStateOf(SpanViewMode.Day) }
@@ -117,9 +123,8 @@ fun SpanScreen(
         }
     }
 
-    // Load spans whenever range changes
-    LaunchedEffect(days.first(), days.last(), token) {
-        loading = true
+    suspend fun refresh(showSpinner: Boolean) {
+        if (showSpinner) loading = true
         error = null
         try {
             val from = days.first().atStartOfDay(ZoneId.systemDefault()).toInstant().toString()
@@ -130,7 +135,27 @@ fun SpanScreen(
         } catch (e: Exception) {
             error = e.message
         } finally {
-            loading = false
+            if (showSpinner) loading = false
+        }
+    }
+
+    // Reload whenever the visible range changes.
+    LaunchedEffect(days.first(), days.last(), token) {
+        refresh(showSpinner = true)
+    }
+
+    // Data goes stale in the background (SMS sync, other devices): refresh
+    // silently whenever this tab becomes active again, the app returns to the
+    // foreground, or every few minutes while it stays open.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(active, days.first(), days.last(), token) {
+        if (!active) return@LaunchedEffect
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            refresh(showSpinner = false)
+            while (true) {
+                delay(STALE_REFRESH_INTERVAL_MS)
+                refresh(showSpinner = false)
+            }
         }
     }
 
