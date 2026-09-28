@@ -68,6 +68,7 @@ class SmsSyncWorker(
             if (messages.size < BATCH_SIZE) break
         }
 
+        syncPrefs.completeBackfill()
         Log.i(TAG, "sync finished: read=$totalRead uploaded=$totalUploaded otpSkipped=$totalOtpSkipped")
         Result.success()
     }
