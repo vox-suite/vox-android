@@ -616,10 +616,10 @@ private fun SpanDayWeekGrid(
             ) {
                 Row(modifier = Modifier.padding(start = GUTTER_WIDTH)) {
                     allDay.forEach { span ->
-                        val dot = categoryDotColor(span.category)
+                        val dot = categoryDotColor(span.category, span.schemaColorToken)
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = Color(categoryBgColor(span.category)),
+                            color = Color(categoryBgColor(span.category, span.schemaColorToken)),
                             modifier = Modifier
                                 .padding(end = 3.dp, top = 3.dp, bottom = 3.dp)
                                 .clickable { onSelectSpan(span) },
@@ -811,8 +811,8 @@ private fun SpanBlock(
     onClick: () -> Unit,
 ) {
     val span = placed.span
-    val dotColor = Color(categoryDotColor(span.category))
-    val bgColor = Color(categoryBgColor(span.category))
+    val dotColor = Color(categoryDotColor(span.category, span.schemaColorToken))
+    val bgColor = Color(categoryBgColor(span.category, span.schemaColorToken))
     val borderColor = dotColor.copy(alpha = 0.35f)
 
     val startLabel = span.startAt?.let { parseIso(it)?.toLocalTime()?.format(DateTimeFormatter.ofPattern("h:mm a")) } ?: ""
@@ -847,12 +847,7 @@ private fun SpanBlock(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                Box(
-                    modifier = Modifier
-                        .size(5.dp)
-                        .clip(CircleShape)
-                        .background(dotColor),
-                )
+                CategoryIndicator(span = span, dotColor = dotColor, dotSize = 5.dp)
             }
         } else {
             // Full chip: title + time
@@ -871,12 +866,7 @@ private fun SpanBlock(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(dotColor),
-                    )
+                    CategoryIndicator(span = span, dotColor = dotColor, dotSize = 6.dp)
                 }
                 if (startLabel.isNotEmpty()) {
                     Text(
@@ -984,8 +974,8 @@ private fun SpanMonthGrid(
 
                             // Span chips (up to 2)
                             daySpans.take(2).forEach { span ->
-                                val dotColor = Color(categoryDotColor(span.category))
-                                val bgColor = Color(categoryBgColor(span.category))
+                                val dotColor = Color(categoryDotColor(span.category, span.schemaColorToken))
+                                val bgColor = Color(categoryBgColor(span.category, span.schemaColorToken))
                                 Surface(
                                     shape = RoundedCornerShape(3.dp),
                                     color = bgColor,
@@ -1039,7 +1029,7 @@ private fun SpanDetailSheet(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    val dotColor = Color(categoryDotColor(span.category))
+    val dotColor = Color(categoryDotColor(span.category, span.schemaColorToken))
     val startLabel = span.startAt?.let { parseIso(it)?.format(DateTimeFormatter.ofPattern("EEE, MMM d · h:mm a")) } ?: "—"
     val endLabel = span.endAt?.let { parseIso(it)?.format(DateTimeFormatter.ofPattern("h:mm a")) } ?: ""
 

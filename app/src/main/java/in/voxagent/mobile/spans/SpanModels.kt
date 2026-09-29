@@ -1,5 +1,6 @@
 package `in`.voxagent.mobile.spans
 
+import androidx.compose.ui.graphics.toArgb
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
@@ -14,6 +15,9 @@ data class Span(
     val notes: String = "",
     val category: String = "general",
     val source: String = "",
+    @SerialName("schema_id") val schemaId: String? = null,
+    @SerialName("schema_color_token") val schemaColorToken: Int? = null,
+    @SerialName("schema_icon_token") val schemaIconToken: Int? = null,
     val status: String = "planned",
     @SerialName("start_at") val startAt: String? = null,
     @SerialName("end_at") val endAt: String? = null,
@@ -94,8 +98,16 @@ private val CAT_COLORS: Map<String, Long> = mapOf(
     "todo" to 0xFF94A3B8,
 )
 
-fun categoryDotColor(category: String): Long =
-    CAT_COLORS[category.lowercase()] ?: 0xFF94A3B8
+/**
+ * [schemaColorToken] (data_schemas.color_token, 0-23) takes priority when
+ * present -- it's the live, LLM-assigned category color. The string-keyed
+ * CAT_COLORS map below is the pre-schema fallback, for spans with no
+ * schema_id (manually created tasks, or spans predating the schema system).
+ */
+fun categoryDotColor(category: String, schemaColorToken: Int? = null): Long {
+    schemaColor(schemaColorToken)?.let { return it.toArgb().toLong() and 0xFFFFFFFFL }
+    return CAT_COLORS[category.lowercase()] ?: 0xFF94A3B8
+}
 
 // bg colours (with alpha ~0.88 mapped to 0xE0-ish prefix)
 private val CAT_BG_COLORS: Map<String, Long> = mapOf(
@@ -109,5 +121,7 @@ private val CAT_BG_COLORS: Map<String, Long> = mapOf(
     "todo" to 0xE4181A20,
 )
 
-fun categoryBgColor(category: String): Long =
-    CAT_BG_COLORS[category.lowercase()] ?: 0xE01A1E2A
+fun categoryBgColor(category: String, schemaColorToken: Int? = null): Long {
+    schemaBgColor(schemaColorToken)?.let { return it.toArgb().toLong() and 0xFFFFFFFFL }
+    return CAT_BG_COLORS[category.lowercase()] ?: 0xE01A1E2A
+}
