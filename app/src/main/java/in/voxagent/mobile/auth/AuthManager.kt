@@ -1,7 +1,7 @@
 package `in`.voxagent.mobile.auth
 
 import android.content.Context
-import android.util.Log
+import `in`.voxagent.mobile.logging.RemoteLog
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
@@ -77,10 +77,10 @@ class AuthManager(private val context: Context) {
 
     suspend fun signIn(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            Log.d(TAG, "signIn: requesting Google credential (webClientId=${BuildConfig.GOOGLE_WEB_CLIENT_ID})")
+            RemoteLog.d(TAG, "signIn: requesting Google credential (webClientId=${BuildConfig.GOOGLE_WEB_CLIENT_ID})")
             val authResult = requestGoogleAuth()
                 ?: error("No Google ID token returned")
-            Log.d(TAG, "signIn: got Google ID token, exchanging with backend")
+            RemoteLog.d(TAG, "signIn: got Google ID token, exchanging with backend")
             val requestJson = json.encodeToString(
                 AuthExchangeRequest.serializer(),
                 AuthExchangeRequest(id_token = authResult.idToken),
@@ -88,7 +88,7 @@ class AuthManager(private val context: Context) {
             val responseJson = try {
                 VoxHttp.postJson("/v1/auth/exchange", requestJson)
             } catch (e: Exception) {
-                Log.e(TAG, "signIn: backend token exchange failed: ${e::class.simpleName} - ${e.message}", e)
+                RemoteLog.e(TAG, "signIn: backend token exchange failed: ${e::class.simpleName} - ${e.message}", e)
                 throw e
             }
             val response = json.decodeFromString(
@@ -102,10 +102,10 @@ class AuthManager(private val context: Context) {
                 displayName = authResult.displayName,
                 avatarUrl = authResult.avatarUrl,
             )
-            Log.d(TAG, "signIn: success (user_id=${response.user_id})")
+            RemoteLog.d(TAG, "signIn: success (user_id=${response.user_id})")
             Unit
         }.onFailure { e ->
-            Log.e(TAG, "signIn: failed: ${e::class.simpleName} - ${e.message}", e)
+            RemoteLog.e(TAG, "signIn: failed: ${e::class.simpleName} - ${e.message}", e)
         }
     }
 
@@ -128,10 +128,10 @@ class AuthManager(private val context: Context) {
         } catch (e: NoCredentialException) {
             // GMS could not find a usable Google account — either none is added on the device,
             // or the GMS network call to verify the account failed (ERR_NAME_NOT_RESOLVED, etc.).
-            Log.e(TAG, "requestGoogleAuth: no credential available: ${e.message}", e)
+            RemoteLog.e(TAG, "requestGoogleAuth: no credential available: ${e.message}", e)
             throw AuthError.NoCredential(e)
         } catch (e: GetCredentialException) {
-            Log.e(TAG, "requestGoogleAuth: getCredential failed: ${e::class.simpleName} - ${e.message}", e)
+            RemoteLog.e(TAG, "requestGoogleAuth: getCredential failed: ${e::class.simpleName} - ${e.message}", e)
             throw AuthError.CredentialError(e)
         }
         val credential = result.credential
@@ -150,7 +150,7 @@ class AuthManager(private val context: Context) {
                 avatarUrl = avatarUrl,
             )
         }
-        Log.e(TAG, "requestGoogleAuth: unexpected credential type: ${credential.type}")
+        RemoteLog.e(TAG, "requestGoogleAuth: unexpected credential type: ${credential.type}")
         throw AuthError.UnexpectedCredentialType(credential.type)
     }
 
@@ -185,7 +185,7 @@ class AuthManager(private val context: Context) {
                 UserProfile(displayName = displayName, email = email, avatarUrl = avatarUrl)
             } else null
         }.onFailure { e ->
-            Log.w(TAG, "tryRefreshProfile: failed: ${e::class.simpleName} - ${e.message}", e)
+            RemoteLog.w(TAG, "tryRefreshProfile: failed: ${e::class.simpleName} - ${e.message}", e)
         }.getOrNull()
     }
 

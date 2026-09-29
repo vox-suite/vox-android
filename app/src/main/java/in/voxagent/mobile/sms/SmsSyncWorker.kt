@@ -3,7 +3,7 @@ package `in`.voxagent.mobile.sms
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.util.Log
+import `in`.voxagent.mobile.logging.RemoteLog
 import android.view.Gravity
 import android.widget.Toast
 import androidx.core.content.ContextCompat
@@ -22,28 +22,28 @@ class SmsSyncWorker(
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val token = AuthManager(applicationContext).currentToken()
-            ?: return@withContext Result.retry().also { Log.w(TAG, "no auth token, retrying later") }
+            ?: return@withContext Result.retry().also { RemoteLog.w(TAG, "no auth token, retrying later") }
 
         if (ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.READ_SMS)
             != PackageManager.PERMISSION_GRANTED
         ) {
-            Log.w(TAG, "READ_SMS not granted, nothing can be read")
+            RemoteLog.w(TAG, "READ_SMS not granted, nothing can be read")
             return@withContext Result.failure()
         }
 
         val reader = SmsReader(applicationContext)
         val consent = runCatching { SmsConsentApi.getStatus(token) }
             .getOrElse {
-                Log.e(TAG, "consent status fetch failed: $it")
+                RemoteLog.e(TAG, "consent status fetch failed: $it")
                 return@withContext Result.retry()
             }
         if (!consent.granted) {
-            Log.w(TAG, "SMS consent not granted on server, nothing to sync")
+            RemoteLog.w(TAG, "SMS consent not granted on server, nothing to sync")
             return@withContext Result.failure()
         }
         val since = consent.synced_until?.let { java.time.Instant.parse(it).toEpochMilli() }
             ?: (System.currentTimeMillis() - consent.retention_days * MILLIS_PER_DAY)
-        Log.i(TAG, "sync starting, reading messages since=$since")
+        RemoteLog.i(TAG, "sync starting, reading messages since=$since")
 
         var latestSeen = since
         var totalRead = 0
@@ -58,14 +58,14 @@ class SmsSyncWorker(
             val uploadable = messages.filterNot { looksLikeOtp(it.body) }
             totalOtpSkipped += messages.size - uploadable.size
             if (uploadable.isNotEmpty()) {
-                Log.i(TAG, "uploading batch of ${uploadable.size} messages (page had ${messages.size})")
+                RemoteLog.i(TAG, "uploading batch of ${uploadable.size} messages (page had ${messages.size})")
                 runCatching { SmsBatchApi.submitBatch(uploadable, token) }
                     .onSuccess {
                         totalUploaded += uploadable.size
                         showToast(applicationContext, "Vox: synced ${uploadable.size} SMS")
                     }
                     .onFailure {
-                        Log.e(TAG, "batch upload failed: $it")
+                        RemoteLog.e(TAG, "batch upload failed: $it")
                         return@withContext Result.retry()
                     }
             }
@@ -76,7 +76,7 @@ class SmsSyncWorker(
             if (messages.size < BATCH_SIZE) break
         }
 
-        Log.i(TAG, "sync finished: read=$totalRead uploaded=$totalUploaded otpSkipped=$totalOtpSkipped")
+        RemoteLog.i(TAG, "sync finished: read=$totalRead uploaded=$totalUploaded otpSkipped=$totalOtpSkipped")
         Result.success()
     }
 

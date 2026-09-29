@@ -2,6 +2,7 @@ package `in`.voxagent.mobile.voice
 
 import `in`.voxagent.mobile.BuildConfig
 import `in`.voxagent.mobile.auth.AuthManager
+import `in`.voxagent.mobile.logging.RemoteLog
 import `in`.voxagent.mobile.net.VoxHttp
 import android.content.Context
 import android.util.Log
@@ -56,6 +57,20 @@ class VoiceSession(private val context: Context) {
     private var pingTimer: Timer? = null
     private var currentTurnId: String? = null
 
+    // Latency tracking (ms, System.currentTimeMillis / nanoTime based).
+    @Volatile private var sessionStartedAt = 0L
+    @Volatile private var connectStartedAt = 0L
+    @Volatile private var turnSentAt = 0L
+    @Volatile private var greetingPending = true
+    @Volatile private var awaitingFirstAudio = false
+    @Volatile private var awaitingFirstDelta = false
+    @Volatile private var lastAudioFrameAt = 0L
+    @Volatile private var turnFrames = 0
+    @Volatile private var turnBytes = 0
+    @Volatile private var maxFrameGapMs = 0L
+    @Volatile private var utterances = 0
+    @Volatile private var bargeIns = 0
+
     private val _status = MutableStateFlow(VoiceStatus.IDLE)
     val status: StateFlow<VoiceStatus> = _status.asStateFlow()
 
@@ -65,18 +80,31 @@ class VoiceSession(private val context: Context) {
     fun start() {
         if (_status.value == VoiceStatus.CONNECTING || _status.value == VoiceStatus.ACTIVE) return
         _status.value = VoiceStatus.CONNECTING
+        sessionStartedAt = System.currentTimeMillis()
+        greetingPending = true
+        awaitingFirstAudio = false
+        awaitingFirstDelta = false
+        turnSentAt = 0L
+        lastAudioFrameAt = 0L
+        utterances = 0
+        bargeIns = 0
+        RemoteLog.i(TAG, "=== voice session starting === device=${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} sdk=${android.os.Build.VERSION.SDK_INT} app=${BuildConfig.VERSION_NAME}")
 
         scope.launch {
             try {
                 connectSocket()
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to connect voice socket", e)
+                RemoteLog.e(TAG, "Failed to connect voice socket", e)
                 fail("Voice connection failed: ${e.message}")
             }
         }
     }
 
     fun stop() {
+        if (sessionStartedAt != 0L) {
+            RemoteLog.i(TAG, "=== voice session ended === duration_ms=${System.currentTimeMillis() - sessionStartedAt} utterances=$utterances barge_ins=$bargeIns underruns=${audioEngine.underrunCount()}")
+            sessionStartedAt = 0L
+        }
         pingTimer?.cancel()
         pingTimer = null
         webSocket?.close(1000, "client stop")
@@ -111,12 +139,15 @@ class VoiceSession(private val context: Context) {
             .header("Authorization", "Bearer $token")
             .build()
 
-        Log.d(TAG, "connectSocket: connecting to ${request.url}")
+        connectStartedAt = System.currentTimeMillis()
+        RemoteLog.i(TAG, "connectSocket: connecting to ${request.url}")
         webSocket = VoxHttp.client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.i(TAG, "Voice socket connected")
+                RemoteLog.i(TAG, "connected to voice socket: ws_connect_ms=${System.currentTimeMillis() - connectStartedAt} http=${response.code} protocol=${response.protocol}")
                 startPingTimer(webSocket)
+                val audioStarted = System.currentTimeMillis()
                 startAudio(webSocket)
+                RemoteLog.i(TAG, "audio engine started: engine_start_ms=${System.currentTimeMillis() - audioStarted} since_session_start_ms=${System.currentTimeMillis() - sessionStartedAt}")
                 _status.value = VoiceStatus.ACTIVE
             }
 
@@ -127,17 +158,18 @@ class VoiceSession(private val context: Context) {
 
             override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
                 Log.d(TAG, "onMessage(bytes): ${bytes.size} bytes")
+                onAudioFrame(bytes.size)
                 audioEngine.mp3Decoder.enqueueChunk(bytes.toByteArray())
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                Log.e(TAG, "Voice socket failure", t)
+                RemoteLog.e(TAG, "Voice socket failure after ${System.currentTimeMillis() - sessionStartedAt}ms http=${response?.code}", t)
                 fail("Voice connection failed: ${t.message}")
                 stop()
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                Log.i(TAG, "Voice socket closed: $code $reason")
+                RemoteLog.i(TAG, "Voice socket closed: $code $reason")
                 if (_status.value != VoiceStatus.IDLE) {
                     _status.value = VoiceStatus.IDLE
                 }
@@ -150,6 +182,7 @@ class VoiceSession(private val context: Context) {
         timer.scheduleAtFixedRate(object : TimerTask() {
             override fun run() {
                 ws.send(protocolJson.encodeToString(VoiceClientMessage.serializer(), VoiceClientMessage.Ping))
+                RemoteLog.i(TAG, "PLAYBACK STATS ~15s: underruns_total=${audioEngine.underrunCount()} queued_chunks=${audioEngine.queuedChunkCount()} playing=${audioEngine.isPlaying()}")
             }
         }, PING_INTERVAL_MS, PING_INTERVAL_MS)
         pingTimer = timer
@@ -163,6 +196,12 @@ class VoiceSession(private val context: Context) {
         var isInSpeech = false
         var lastSpeechTime = System.currentTimeMillis()
         var lastLevelLog = 0L
+        var lastStatsLog = System.currentTimeMillis()
+        var micChunks = 0
+        var micRmsSum = 0f
+        var micRmsPeak = 0f
+        var micClipped = 0
+        var droppedShort = 0
         var consecutiveLoudChunks = 0
         var lastPlayingAt = 0L
 
@@ -178,6 +217,15 @@ class VoiceSession(private val context: Context) {
                 Log.d(TAG, "mic level: rms=$rms threshold=$SPEECH_THRESHOLD isInSpeech=$isInSpeech")
                 lastLevelLog = now
             }
+            micChunks++
+            micRmsSum += rms
+            micRmsPeak = maxOf(micRmsPeak, rms)
+            if (samples.any { it >= 32500 || it <= -32500 }) micClipped++
+            if (now - lastStatsLog >= 15_000) {
+                RemoteLog.i(TAG, "MIC STATS ~15s: chunks=$micChunks rms_avg=${"%.4f".format(micRmsSum / micChunks.coerceAtLeast(1))} rms_peak=${"%.4f".format(micRmsPeak)} clipped_chunks=$micClipped utterances=$utterances dropped_short=$droppedShort barge_ins=$bargeIns")
+                lastStatsLog = now
+                micChunks = 0; micRmsSum = 0f; micRmsPeak = 0f; micClipped = 0
+            }
 
             val playing = audioEngine.isPlaying()
             if (playing) lastPlayingAt = now
@@ -187,7 +235,8 @@ class VoiceSession(private val context: Context) {
                 consecutiveLoudChunks++
 
                 if (consecutiveLoudChunks >= INTERRUPT_DEBOUNCE_CHUNKS && playing) {
-                    Log.d(TAG, "startAudio: sustained speech (rms=$rms) while playing back -> clearing playback + sending Interrupt")
+                    bargeIns++
+                    RemoteLog.i(TAG, "barge-in: user spoke over playback (rms=$rms), interrupting")
                     audioEngine.clearPlayback()
                     ws.send(protocolJson.encodeToString(VoiceClientMessage.serializer(), VoiceClientMessage.Interrupt))
                     _events.tryEmit(VoiceEvent.Interrupted)
@@ -208,7 +257,8 @@ class VoiceSession(private val context: Context) {
                         speechBuffer.clear()
                         sendUtterance(ws, utterance)
                     } else {
-                        Log.d(TAG, "startAudio: utterance too short (${speechBuffer.size} < $MIN_UTTERANCE_SAMPLES), dropping")
+                        droppedShort++
+                        RemoteLog.d(TAG, "utterance too short (${speechBuffer.size} < $MIN_UTTERANCE_SAMPLES), dropped")
                         speechBuffer.clear()
                     }
                 }
@@ -230,7 +280,14 @@ class VoiceSession(private val context: Context) {
 
     private fun sendUtterance(ws: WebSocket, utterance: ShortArray) {
         val bytes = pcm16ToLittleEndianBytes(utterance)
-        Log.d(TAG, "sendUtterance: ${utterance.size} samples (${utterance.size * 1000 / 16000}ms), ${bytes.size} bytes")
+        RemoteLog.i(TAG, "sending utterance: ${utterance.size} samples (${utterance.size * 1000 / 16000}ms), ${bytes.size} bytes")
+        utterances++
+        turnSentAt = System.currentTimeMillis()
+        awaitingFirstAudio = true
+        awaitingFirstDelta = true
+        turnFrames = 0
+        turnBytes = 0
+        maxFrameGapMs = 0L
         ws.send(bytes.toByteString())
         ws.send(
             protocolJson.encodeToString(
@@ -238,6 +295,21 @@ class VoiceSession(private val context: Context) {
                 VoiceClientMessage.Turn(conversation_id = null),
             ),
         )
+    }
+
+    private fun onAudioFrame(size: Int) {
+        val now = System.currentTimeMillis()
+        if (lastAudioFrameAt != 0L) maxFrameGapMs = maxOf(maxFrameGapMs, now - lastAudioFrameAt)
+        lastAudioFrameAt = now
+        turnFrames++
+        turnBytes += size
+        if (greetingPending) {
+            greetingPending = false
+            RemoteLog.i(TAG, "LATENCY greeting_first_audio_ms=${now - sessionStartedAt} (since session start)")
+        } else if (awaitingFirstAudio) {
+            awaitingFirstAudio = false
+            if (turnSentAt != 0L) RemoteLog.i(TAG, "LATENCY time_to_first_audio_ms=${now - turnSentAt} (utterance sent -> first audio frame)")
+        }
     }
 
     private fun handleServerMessage(text: String) {
@@ -250,10 +322,11 @@ class VoiceSession(private val context: Context) {
 
         when (message) {
             is VoiceServerMessage.Connected -> {
-                Log.i(TAG, "Voice connected: format=${message.format} rate=${message.sample_rate}")
+                RemoteLog.i(TAG, "voice session connected: format=${message.format} sample_rate=${message.sample_rate} since_session_start_ms=${System.currentTimeMillis() - sessionStartedAt}")
             }
             is VoiceServerMessage.UserTranscript -> {
-                Log.d(TAG, "user transcript: \"${message.text}\"")
+                if (turnSentAt != 0L) RemoteLog.i(TAG, "LATENCY transcript_ms=${System.currentTimeMillis() - turnSentAt} (utterance sent -> transcript)")
+                RemoteLog.i(TAG, "user transcript: ${message.text.length} chars")
                 _events.tryEmit(VoiceEvent.UserTranscript(message.text))
             }
             is VoiceServerMessage.Thinking -> {
@@ -262,19 +335,25 @@ class VoiceSession(private val context: Context) {
             }
             is VoiceServerMessage.TextDelta -> {
                 if (message.turn_id == currentTurnId) {
+                    if (awaitingFirstDelta) {
+                        awaitingFirstDelta = false
+                        if (turnSentAt != 0L) RemoteLog.i(TAG, "LATENCY first_text_delta_ms=${System.currentTimeMillis() - turnSentAt} (utterance sent -> first text)")
+                    }
                     _events.tryEmit(VoiceEvent.Delta(message.delta))
                 }
             }
             is VoiceServerMessage.Done -> {
+                RemoteLog.i(TAG, "turn done: ${message.turn_id} frames=$turnFrames bytes=$turnBytes max_frame_gap_ms=$maxFrameGapMs total_ms=${if (turnSentAt != 0L) System.currentTimeMillis() - turnSentAt else -1} underruns_total=${audioEngine.underrunCount()}")
                 _events.tryEmit(VoiceEvent.Done)
             }
             is VoiceServerMessage.Interrupted -> {
+                RemoteLog.i(TAG, "playback interrupted")
                 currentTurnId = null
                 audioEngine.clearPlayback()
                 _events.tryEmit(VoiceEvent.Interrupted)
             }
             is VoiceServerMessage.Error -> {
-                Log.w(TAG, "Voice server error: ${message.message}")
+                RemoteLog.w(TAG, "Voice server error: ${message.message}")
                 _events.tryEmit(VoiceEvent.Error(message.message))
             }
             is VoiceServerMessage.Pong -> {}

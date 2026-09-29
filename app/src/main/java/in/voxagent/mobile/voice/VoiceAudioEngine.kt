@@ -11,6 +11,7 @@ import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.util.Log
+import `in`.voxagent.mobile.logging.RemoteLog
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -77,7 +78,7 @@ class VoiceAudioEngine(context: Context) {
         if (NoiseSuppressor.isAvailable()) {
             noiseSuppressor = NoiseSuppressor.create(record.audioSessionId)?.also { it.enabled = true }
         }
-        Log.d(TAG, "startCapture: aec=${echoCanceler?.enabled} ns=${noiseSuppressor?.enabled}")
+        RemoteLog.i(TAG, "startCapture: aec_available=${AcousticEchoCanceler.isAvailable()} aec=${echoCanceler?.enabled} ns_available=${NoiseSuppressor.isAvailable()} ns=${noiseSuppressor?.enabled} source=VOICE_COMMUNICATION rate=$CAPTURE_SAMPLE_RATE minBuf=$minBuf")
 
         audioRecord = record
         capturing = true
@@ -99,7 +100,7 @@ class VoiceAudioEngine(context: Context) {
                     }
                     onSamples(buffer.copyOf(read))
                 } else if (read < 0) {
-                    Log.w(TAG, "capture: AudioRecord.read returned error code $read")
+                    RemoteLog.w(TAG, "capture: AudioRecord.read returned error code $read")
                 }
             }
             Log.d(TAG, "capture: loop exiting after $readCount successful reads")
@@ -192,7 +193,7 @@ class VoiceAudioEngine(context: Context) {
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
 
-        Log.d(TAG, "startPlayback: AudioTrack state=${track.state} playState=${track.playState} sessionId=${track.audioSessionId}")
+        RemoteLog.i(TAG, "startPlayback: AudioTrack state=${track.state} playState=${track.playState} rate=$PLAYBACK_SAMPLE_RATE minBuf=$minBuf bufferFrames=${track.bufferSizeInFrames} perfMode=${track.performanceMode} route=${track.routedDevice?.productName}/${track.routedDevice?.type} audioMode=${audioManager.mode} speakerphone=${audioManager.isSpeakerphoneOn}")
         audioTrack = track
         playing = true
         track.play()
@@ -238,6 +239,11 @@ class VoiceAudioEngine(context: Context) {
 
     fun isPlaying(): Boolean = queuedChunks.get() > 0
 
+    fun queuedChunkCount(): Int = queuedChunks.get()
+
+    /** Cumulative AudioTrack underruns (playback starved -> audible glitches). */
+    fun underrunCount(): Int = audioTrack?.underrunCount ?: 0
+
     fun clearPlayback() {
         playbackEpoch.incrementAndGet()
         pcmQueue.clear()
@@ -255,7 +261,7 @@ class VoiceAudioEngine(context: Context) {
     private fun enqueuePlayback(samples: ShortArray, sampleRate: Int, channels: Int) {
         Log.d(TAG, "enqueuePlayback: ${samples.size} samples, sampleRate=$sampleRate, channels=$channels")
         if (sampleRate != PLAYBACK_SAMPLE_RATE) {
-            Log.w(TAG, "Skipping MP3 frame at unexpected sample rate $sampleRate (expected $PLAYBACK_SAMPLE_RATE)")
+            RemoteLog.w(TAG, "Skipping MP3 frame at unexpected sample rate $sampleRate (expected $PLAYBACK_SAMPLE_RATE)")
             return
         }
         val mono = if (channels <= 1) {
