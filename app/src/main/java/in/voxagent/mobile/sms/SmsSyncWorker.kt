@@ -32,8 +32,17 @@ class SmsSyncWorker(
         }
 
         val reader = SmsReader(applicationContext)
-        val syncPrefs = SyncPrefs(applicationContext)
-        val since = syncPrefs.lastSyncedMillis()
+        val consent = runCatching { SmsConsentApi.getStatus(token) }
+            .getOrElse {
+                Log.e(TAG, "consent status fetch failed: $it")
+                return@withContext Result.retry()
+            }
+        if (!consent.granted) {
+            Log.w(TAG, "SMS consent not granted on server, nothing to sync")
+            return@withContext Result.failure()
+        }
+        val since = consent.synced_until?.let { java.time.Instant.parse(it).toEpochMilli() }
+            ?: (System.currentTimeMillis() - consent.retention_days * MILLIS_PER_DAY)
         Log.i(TAG, "sync starting, reading messages since=$since")
 
         var latestSeen = since
@@ -63,12 +72,10 @@ class SmsSyncWorker(
 
             val newestMillis = java.time.Instant.parse(messages.last().received_at).toEpochMilli()
             latestSeen = newestMillis
-            syncPrefs.setLastSyncedMillis(latestSeen)
 
             if (messages.size < BATCH_SIZE) break
         }
 
-        syncPrefs.completeBackfill()
         Log.i(TAG, "sync finished: read=$totalRead uploaded=$totalUploaded otpSkipped=$totalOtpSkipped")
         Result.success()
     }
@@ -76,6 +83,7 @@ class SmsSyncWorker(
     companion object {
         const val UNIQUE_WORK_NAME = "sms_sync"
         private const val BATCH_SIZE = 100
+        private const val MILLIS_PER_DAY = 24L * 60 * 60 * 1000
     }
 }
 

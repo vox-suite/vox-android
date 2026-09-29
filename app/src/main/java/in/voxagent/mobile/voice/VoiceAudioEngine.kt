@@ -1,6 +1,11 @@
 package `in`.voxagent.mobile.voice
 
+import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.NoiseSuppressor
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.AudioTrack
@@ -22,7 +27,13 @@ private const val PLAYBACK_SAMPLE_RATE = 44100
  * accept these rates directly, so unlike the desktop client (cpal,
  * device-native rate only) no manual resampling is needed on either side.
  */
-class VoiceAudioEngine {
+class VoiceAudioEngine(context: Context) {
+    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private var savedMode = AudioManager.MODE_NORMAL
+    private var savedSpeakerphone = false
+    private var savedVoiceVolume = 0
+    private var echoCanceler: AcousticEchoCanceler? = null
+    private var noiseSuppressor: NoiseSuppressor? = null
     private var audioRecord: AudioRecord? = null
     private var captureThread: Thread? = null
     @Volatile private var capturing = false
@@ -49,7 +60,7 @@ class VoiceAudioEngine {
         }
 
         val record = AudioRecord(
-            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
             CAPTURE_SAMPLE_RATE,
             AudioFormat.CHANNEL_IN_MONO,
             AudioFormat.ENCODING_PCM_16BIT,
@@ -59,6 +70,14 @@ class VoiceAudioEngine {
             record.release()
             throw IllegalStateException("Failed to initialize AudioRecord")
         }
+
+        if (AcousticEchoCanceler.isAvailable()) {
+            echoCanceler = AcousticEchoCanceler.create(record.audioSessionId)?.also { it.enabled = true }
+        }
+        if (NoiseSuppressor.isAvailable()) {
+            noiseSuppressor = NoiseSuppressor.create(record.audioSessionId)?.also { it.enabled = true }
+        }
+        Log.d(TAG, "startCapture: aec=${echoCanceler?.enabled} ns=${noiseSuppressor?.enabled}")
 
         audioRecord = record
         capturing = true
@@ -94,6 +113,10 @@ class VoiceAudioEngine {
         capturing = false
         captureThread?.join(500)
         captureThread = null
+        echoCanceler?.release()
+        echoCanceler = null
+        noiseSuppressor?.release()
+        noiseSuppressor = null
         audioRecord?.let {
             runCatching { it.stop() }
             it.release()
@@ -101,7 +124,50 @@ class VoiceAudioEngine {
         audioRecord = null
     }
 
+    private fun enterCommunicationMode() {
+        savedMode = audioManager.mode
+        savedSpeakerphone = audioManager.isSpeakerphoneOn
+        savedVoiceVolume = audioManager.getStreamVolume(AudioManager.STREAM_VOICE_CALL)
+        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        audioManager.setStreamVolume(
+            AudioManager.STREAM_VOICE_CALL,
+            audioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL),
+            0,
+        )
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            val devices = audioManager.availableCommunicationDevices
+            val headset = devices.any {
+                it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                    it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                    it.type == AudioDeviceInfo.TYPE_USB_HEADSET ||
+                    it.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                    it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+            }
+            if (!headset) {
+                devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+                    ?.let { audioManager.setCommunicationDevice(it) }
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            if (!audioManager.isWiredHeadsetOn && !audioManager.isBluetoothScoOn) {
+                audioManager.isSpeakerphoneOn = true
+            }
+        }
+    }
+
+    private fun exitCommunicationMode() {
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            audioManager.clearCommunicationDevice()
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.isSpeakerphoneOn = savedSpeakerphone
+        }
+        audioManager.setStreamVolume(AudioManager.STREAM_VOICE_CALL, savedVoiceVolume, 0)
+        audioManager.mode = savedMode
+    }
+
     fun startPlayback() {
+        enterCommunicationMode()
         val minBuf = AudioTrack.getMinBufferSize(
             PLAYBACK_SAMPLE_RATE,
             AudioFormat.CHANNEL_OUT_MONO,
@@ -111,11 +177,7 @@ class VoiceAudioEngine {
         val track = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
-                    // USAGE_VOICE_COMMUNICATION routes to the in-call/earpiece stream and
-                    // follows in-call volume, which is silent or barely audible without an
-                    // active telephony call forcing speakerphone. USAGE_MEDIA plays on the
-                    // normal media stream through the loudspeaker like any other app audio.
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build(),
             )
@@ -171,6 +233,7 @@ class VoiceAudioEngine {
         audioTrack = null
         pcmQueue.clear()
         queuedChunks.set(0)
+        exitCommunicationMode()
     }
 
     fun isPlaying(): Boolean = queuedChunks.get() > 0

@@ -31,12 +31,9 @@ private const val SILENCE_TIMEOUT_MS = 650L
 private const val MIN_UTTERANCE_SAMPLES = 5600 // 350ms at 16kHz
 private const val PING_INTERVAL_MS = 15_000L
 
-// Debounce for barge-in: without echo cancellation, Vox's own speaker output
-// leaking into the mic reads as speech above SPEECH_THRESHOLD, which would
-// otherwise self-interrupt playback the instant it starts. Require a short
-// run of consecutive loud mic chunks (genuine speech is sustained; leaked
-// echo of a single word usually isn't) before treating it as a real interrupt.
 private const val INTERRUPT_DEBOUNCE_CHUNKS = 4
+private const val ECHO_THRESHOLD = 0.03f
+private const val ECHO_TAIL_MS = 300L
 
 enum class VoiceStatus { IDLE, CONNECTING, ACTIVE, ERROR }
 
@@ -53,7 +50,7 @@ private val protocolJson = Json { ignoreUnknownKeys = true; classDiscriminator =
 
 class VoiceSession(private val context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val audioEngine = VoiceAudioEngine()
+    private val audioEngine = VoiceAudioEngine(context)
 
     private var webSocket: WebSocket? = null
     private var pingTimer: Timer? = null
@@ -167,6 +164,7 @@ class VoiceSession(private val context: Context) {
         var lastSpeechTime = System.currentTimeMillis()
         var lastLevelLog = 0L
         var consecutiveLoudChunks = 0
+        var lastPlayingAt = 0L
 
         Log.d(TAG, "startAudio: SPEECH_THRESHOLD=$SPEECH_THRESHOLD MIN_UTTERANCE_SAMPLES=$MIN_UTTERANCE_SAMPLES SILENCE_TIMEOUT_MS=$SILENCE_TIMEOUT_MS")
 
@@ -181,14 +179,14 @@ class VoiceSession(private val context: Context) {
                 lastLevelLog = now
             }
 
-            if (rms >= SPEECH_THRESHOLD) {
+            val playing = audioEngine.isPlaying()
+            if (playing) lastPlayingAt = now
+            val threshold = if (now - lastPlayingAt < ECHO_TAIL_MS) ECHO_THRESHOLD else SPEECH_THRESHOLD
+
+            if (rms >= threshold) {
                 consecutiveLoudChunks++
 
-                // If user speaks while agent is playing speech, interrupt --
-                // but only once the mic has picked up sustained sound, not a
-                // single chunk (which is usually Vox's own output leaking
-                // back through the speakers rather than real speech).
-                if (consecutiveLoudChunks >= INTERRUPT_DEBOUNCE_CHUNKS && audioEngine.isPlaying()) {
+                if (consecutiveLoudChunks >= INTERRUPT_DEBOUNCE_CHUNKS && playing) {
                     Log.d(TAG, "startAudio: sustained speech (rms=$rms) while playing back -> clearing playback + sending Interrupt")
                     audioEngine.clearPlayback()
                     ws.send(protocolJson.encodeToString(VoiceClientMessage.serializer(), VoiceClientMessage.Interrupt))
@@ -198,8 +196,9 @@ class VoiceSession(private val context: Context) {
                 speechBuffer.addAll(samples.asList())
                 lastSpeechTime = now
                 isInSpeech = true
-            } else if (isInSpeech) {
+            } else {
                 consecutiveLoudChunks = 0
+                if (isInSpeech) {
                 speechBuffer.addAll(samples.asList())
                 if (now - lastSpeechTime >= SILENCE_TIMEOUT_MS) {
                     isInSpeech = false
@@ -212,6 +211,7 @@ class VoiceSession(private val context: Context) {
                         Log.d(TAG, "startAudio: utterance too short (${speechBuffer.size} < $MIN_UTTERANCE_SAMPLES), dropping")
                         speechBuffer.clear()
                     }
+                }
                 }
             }
         }

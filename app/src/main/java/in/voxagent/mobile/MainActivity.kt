@@ -74,7 +74,6 @@ import `in`.voxagent.mobile.map.MissionMapBackground
 import `in`.voxagent.mobile.sms.SmsConsentApi
 import `in`.voxagent.mobile.sms.SmsConsentStatus
 import `in`.voxagent.mobile.sms.SmsSyncWorker
-import `in`.voxagent.mobile.sms.SyncPrefs
 import `in`.voxagent.mobile.ui.ConsentScreen
 import `in`.voxagent.mobile.ui.LocationConsentScreen
 import `in`.voxagent.mobile.ui.VoxAtmosphereBackground
@@ -227,27 +226,6 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
             .onSuccess { status ->
                 consentStatus = status
                 if (status.granted) {
-                    val prefs = SyncPrefs(activity)
-                    val grantedAt = status.granted_at
-                    val serverMillis = status.synced_until
-                        ?.let { java.time.Instant.parse(it).toEpochMilli() }
-                    val historyStart = System.currentTimeMillis() -
-                        status.retention_days * MILLIS_PER_DAY
-                    if (grantedAt != null && prefs.backfillDoneFor() != grantedAt) {
-                        if (prefs.backfillStartedFor() != grantedAt) {
-                            prefs.startBackfill(grantedAt, historyStart)
-                        }
-                    } else if (serverMillis != null && serverMillis > prefs.lastSyncedMillis()) {
-                        prefs.setLastSyncedMillis(serverMillis)
-                    }
-                    Log.i(
-                        "SmsSync",
-                        "consent granted_at=$grantedAt retention_days=${status.retention_days} " +
-                            "server_synced_until=${status.synced_until} " +
-                            "backfill_started=${prefs.backfillStartedFor() == grantedAt} " +
-                            "backfill_done=${prefs.backfillDoneFor() == grantedAt} " +
-                            "cursor=${java.time.Instant.ofEpochMilli(prefs.lastSyncedMillis())}",
-                    )
                     if (!smsPermissionGranted) {
                         permissionLauncher.launch(Manifest.permission.READ_SMS)
                     }
@@ -293,12 +271,6 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
                     runCatching { SmsConsentApi.grant(token) }
                         .onSuccess {
                             consentStatus = it
-                            it.granted_at?.let { grantedAt ->
-                                SyncPrefs(activity).startBackfill(
-                                    grantedAt,
-                                    System.currentTimeMillis() - it.retention_days * MILLIS_PER_DAY,
-                                )
-                            }
                             showConsentScreen = false
                             if (!smsPermissionGranted) {
                                 permissionLauncher.launch(Manifest.permission.READ_SMS)
@@ -648,8 +620,6 @@ private fun HomeScreen(
         )
     }
 }
-
-private const val MILLIS_PER_DAY = 24L * 60 * 60 * 1000
 
 private fun schedulePeriodicSync(activity: ComponentActivity) {
     val request = PeriodicWorkRequestBuilder<SmsSyncWorker>(1, TimeUnit.HOURS).build()
