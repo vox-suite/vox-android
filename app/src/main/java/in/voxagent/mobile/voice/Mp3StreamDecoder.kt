@@ -23,6 +23,7 @@ class Mp3StreamDecoder(private val onPcm: (samples: ShortArray, sampleRate: Int,
 
     @Synchronized
     fun start() {
+        Log.d(TAG, "start")
         stop()
         val input = PipedInputStream(PIPE_BUFFER_SIZE)
         val output = PipedOutputStream(input)
@@ -36,7 +37,11 @@ class Mp3StreamDecoder(private val onPcm: (samples: ShortArray, sampleRate: Int,
 
     @Synchronized
     fun enqueueChunk(bytes: ByteArray) {
-        val out = pipeOut ?: return
+        Log.d(TAG, "enqueueChunk: ${bytes.size} bytes")
+        val out = pipeOut ?: run {
+            Log.w(TAG, "enqueueChunk: no pipe open, dropping ${bytes.size} bytes")
+            return
+        }
         try {
             out.write(bytes)
             out.flush()
@@ -54,8 +59,10 @@ class Mp3StreamDecoder(private val onPcm: (samples: ShortArray, sampleRate: Int,
     }
 
     private fun decodeLoop(input: PipedInputStream) {
+        Log.d(TAG, "decodeLoop: started")
         val bitstream = Bitstream(input)
         val decoder = Decoder()
+        var frameCount = 0
         try {
             while (!Thread.currentThread().isInterrupted) {
                 val header = try {
@@ -67,8 +74,16 @@ class Mp3StreamDecoder(private val onPcm: (samples: ShortArray, sampleRate: Int,
 
                 val output = decoder.decodeFrame(header, bitstream)
                 if (output is SampleBuffer && output.bufferLength > 0) {
+                    frameCount++
                     val samples = output.buffer.copyOf(output.bufferLength)
+                    Log.d(
+                        TAG,
+                        "decodeLoop: frame #$frameCount bufferLength=${output.bufferLength} " +
+                            "sampleRate=${output.sampleFrequency} channels=${output.channelCount}",
+                    )
                     onPcm(samples, output.sampleFrequency, output.channelCount)
+                } else {
+                    Log.d(TAG, "decodeLoop: frame decoded to non-audio output: $output")
                 }
                 bitstream.closeFrame()
             }
@@ -77,6 +92,7 @@ class Mp3StreamDecoder(private val onPcm: (samples: ShortArray, sampleRate: Int,
                 Log.w(TAG, "MP3 decode loop stopped: ${e.message}")
             }
         } finally {
+            Log.d(TAG, "decodeLoop: exiting after $frameCount frames")
             runCatching { bitstream.close() }
         }
     }

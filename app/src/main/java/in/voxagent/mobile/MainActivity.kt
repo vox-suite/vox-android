@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.material3.MaterialTheme
@@ -46,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -88,15 +88,15 @@ import `in`.voxagent.mobile.spans.SpanScreen
 import `in`.voxagent.mobile.ui.theme.BorderSubtle
 import `in`.voxagent.mobile.ui.theme.CoralPulse
 import `in`.voxagent.mobile.ui.theme.Ink
-import `in`.voxagent.mobile.ui.theme.Obsidian
 import `in`.voxagent.mobile.ui.theme.PureWhite
-import `in`.voxagent.mobile.ui.theme.Slate
 import `in`.voxagent.mobile.ui.theme.Smoke
-import `in`.voxagent.mobile.ui.theme.SuccessGreen
 import `in`.voxagent.mobile.ui.theme.VoidBlack
 import `in`.voxagent.mobile.ui.theme.VoxTheme
 import `in`.voxagent.mobile.ui.voxGrain
+import dev.chrisbanes.haze.HazeDefaults
 import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
@@ -521,89 +521,87 @@ private fun HomeScreen(
                 .voxGrain(opacity = 0.05f, blendMode = BlendMode.SrcOver, tileSize = 140.dp),
         )
 
+      }
 
-        // Agent Cockpit Card (shown only when the Agent tab is active on the left pill)
-        AnimatedVisibility(
-            visible = selectedTab == VoxNavTab.Agent,
-            enter = fadeIn() + slideInVertically(initialOffsetY = { -40 }),
-            exit = fadeOut() + slideOutVertically(targetOffsetY = { -40 }),
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.Center)
-                .padding(24.dp),
-        ) {
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = Ink.copy(alpha = 0.95f),
-                border = BorderStroke(1.dp, BorderSubtle),
-                shadowElevation = 16.dp,
-            ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    VoxLogo(size = 72.dp, animated = true)
+      // Agent Cockpit Card (shown only when the Agent tab is active on the left pill).
+      // Drawn as a sibling AFTER the hazeSource Box (like the nav bar and profile sheet
+      // below) so it blurs the map behind it instead of being part of its own source.
+      AnimatedVisibility(
+          visible = selectedTab == VoxNavTab.Agent,
+          enter = fadeIn() + slideInVertically(initialOffsetY = { -40 }),
+          exit = fadeOut() + slideOutVertically(targetOffsetY = { -40 }),
+          modifier = Modifier
+              .fillMaxWidth()
+              .align(Alignment.Center)
+              .padding(24.dp),
+      ) {
+          Surface(
+              modifier = Modifier
+                  .clip(RoundedCornerShape(20.dp))
+                  .hazeEffect(
+                      state = hazeState,
+                      style = HazeDefaults.style(
+                          // Lower opacity than the profile sheet/nav pill: this card sits
+                          // dead-center over the dark 3D map, which has far less brightness
+                          // variance to begin with, so the same 0.65/0.5 overlay used
+                          // elsewhere crushes the blurred backdrop to a flat black instead
+                          // of reading as frosted glass.
+                          backgroundColor = VoidBlack.copy(alpha = 0.35f),
+                          tint = HazeTint(Ink.copy(alpha = 0.25f)),
+                          blurRadius = 24.dp,
+                      ),
+                  ),
+              shape = RoundedCornerShape(20.dp),
+              color = Color.Transparent,
+              border = BorderStroke(1.dp, BorderSubtle),
+              shadowElevation = 16.dp,
+          ) {
+              Column(
+                  modifier = Modifier.padding(24.dp),
+                  horizontalAlignment = Alignment.CenterHorizontally,
+                  verticalArrangement = Arrangement.spacedBy(16.dp),
+              ) {
+                  VoxLogo(size = 72.dp, animated = true)
 
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "VOX AGENT",
-                            color = PureWhite,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 18.sp,
-                            letterSpacing = 1.sp,
-                        )
-                        Text(
-                            text = voiceSubtitle,
-                            color = Smoke,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 12.sp,
-                        )
-                    }
+                  Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                      Text(
+                          text = "VOX AGENT",
+                          color = PureWhite,
+                          fontWeight = FontWeight.SemiBold,
+                          fontSize = 18.sp,
+                          letterSpacing = 1.sp,
+                      )
+                      Text(
+                          text = voiceSubtitle,
+                          color = Smoke,
+                          fontFamily = FontFamily.Monospace,
+                          fontSize = 12.sp,
+                      )
+                  }
 
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(Obsidian)
-                            .border(BorderStroke(1.dp, Slate), RoundedCornerShape(50))
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(SuccessGreen))
-                        Text(
-                            text = "Opus 48kHz • <180ms",
-                            color = Smoke,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.sp,
-                        )
-                    }
+                  Spacer(modifier = Modifier.height(4.dp))
 
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    VoxPrimaryButton(
-                        text = when (voiceStatus) {
-                            VoiceStatus.IDLE, VoiceStatus.ERROR -> "Talk to Vox"
-                            VoiceStatus.CONNECTING -> "Connecting…"
-                            VoiceStatus.ACTIVE -> "End Call"
-                        },
-                        onClick = {
-                            when (voiceStatus) {
-                                VoiceStatus.IDLE, VoiceStatus.ERROR -> {
-                                    if (recordAudioGranted) {
-                                        voiceSession.start()
-                                    } else {
-                                        recordAudioLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                    }
-                                }
-                                VoiceStatus.ACTIVE, VoiceStatus.CONNECTING -> voiceSession.stop()
-                            }
-                        },
-                    )
-                }
-            }
-        }
-
+                  VoxPrimaryButton(
+                      text = when {
+                          voiceStatus == VoiceStatus.CONNECTING -> "Connecting…"
+                          voiceStatus == VoiceStatus.ACTIVE -> "End Call"
+                          else -> "Talk to Vox"
+                      },
+                      onClick = {
+                          when (voiceStatus) {
+                              VoiceStatus.IDLE, VoiceStatus.ERROR -> {
+                                  if (recordAudioGranted) {
+                                      voiceSession.start()
+                                  } else {
+                                      recordAudioLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                  }
+                              }
+                              VoiceStatus.ACTIVE, VoiceStatus.CONNECTING -> voiceSession.stop()
+                          }
+                      },
+                  )
+              }
+          }
       }
 
       // Span Timeline Tab — full-screen overlay, drawn ABOVE the map but BELOW the nav bar

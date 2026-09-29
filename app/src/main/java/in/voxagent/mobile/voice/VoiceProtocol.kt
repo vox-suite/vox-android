@@ -8,9 +8,7 @@ sealed class VoiceClientMessage {
     @Serializable
     @SerialName("turn")
     data class Turn(
-        val text: String,
         val conversation_id: String? = null,
-        val interrupted: Boolean = false,
     ) : VoiceClientMessage()
 
     @Serializable
@@ -27,6 +25,10 @@ sealed class VoiceServerMessage {
     @Serializable
     @SerialName("connected")
     data class Connected(val format: String, val sample_rate: Int) : VoiceServerMessage()
+
+    @Serializable
+    @SerialName("user_transcript")
+    data class UserTranscript(val turn_id: String, val text: String) : VoiceServerMessage()
 
     @Serializable
     @SerialName("thinking")

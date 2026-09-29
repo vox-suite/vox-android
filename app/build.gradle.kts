@@ -21,12 +21,8 @@ android {
         applicationId = "in.voxagent.mobile"
         minSdk = 26
         targetSdk = 37
-        versionCode = 14
-        versionName = "0.1.44"
-
-        ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
-        }
+        versionCode = 15
+        versionName = "0.1.46"
 
         buildConfigField(
             "String",
@@ -54,13 +50,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    ndkVersion = "30.0.16248370"
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/whisper/CMakeLists.txt")
-        }
     }
 }
 
