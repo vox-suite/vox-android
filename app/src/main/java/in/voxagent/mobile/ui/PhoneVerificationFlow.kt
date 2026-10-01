@@ -12,6 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -47,7 +48,7 @@ fun PhoneVerificationFlow(
     var last4 by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
-    var cooldown by remember { mutableStateOf(0) }
+    var cooldown by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(cooldown) {
         if (cooldown > 0) {
