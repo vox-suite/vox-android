@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,6 +65,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import android.os.Build
+import `in`.voxagent.mobile.BuildConfig
 import `in`.voxagent.mobile.R
 import `in`.voxagent.mobile.auth.AuthError
 import `in`.voxagent.mobile.auth.AuthManager
@@ -85,6 +88,7 @@ import `in`.voxagent.mobile.ui.VoxPrimaryButton
 import `in`.voxagent.mobile.ui.VoxProfileSheet
 import `in`.voxagent.mobile.ui.VoxWordmark
 import `in`.voxagent.mobile.spans.SpanScreen
+import `in`.voxagent.mobile.web.VoxWebScreen
 import `in`.voxagent.mobile.ui.theme.BorderSubtle
 import `in`.voxagent.mobile.ui.theme.CoralPulse
 import `in`.voxagent.mobile.ui.theme.Ink
@@ -440,6 +444,7 @@ private fun HomeScreen(
     onReviewLocationTracking: (() -> Unit)? = null,
 ) {
     var selectedTab by remember { mutableStateOf(VoxNavTab.Home) }
+    val latestToken by rememberUpdatedState(token)
     var showProfileSheet by remember { mutableStateOf(false) }
     val hazeState = remember { HazeState() }
 
@@ -586,11 +591,23 @@ private fun HomeScreen(
           modifier = Modifier.fillMaxSize(),
       ) {
           if (token != null) {
-              SpanScreen(
-                  token = token,
-                  active = selectedTab == VoxNavTab.Span,
-                  modifier = Modifier.fillMaxSize(),
-              )
+              if (BuildConfig.USE_WEB_SPANS) {
+                  VoxWebScreen(
+                      route = "timeline",
+                      tokenProvider = { latestToken },
+                      modifier = Modifier
+                          .fillMaxSize()
+                          .statusBarsPadding()
+                          .navigationBarsPadding()
+                          .padding(bottom = 80.dp),
+                  )
+              } else {
+                  SpanScreen(
+                      token = token,
+                      active = selectedTab == VoxNavTab.Span,
+                      modifier = Modifier.fillMaxSize(),
+                  )
+              }
           }
       }
 

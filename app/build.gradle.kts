@@ -1,4 +1,7 @@
+import java.net.URI
+import java.security.MessageDigest
 import java.util.Properties
+import java.util.zip.ZipInputStream
 
 plugins {
     id("com.android.application")
@@ -11,6 +14,70 @@ val localProperties = Properties().apply {
     if (file.exists()) {
         file.inputStream().use { load(it) }
     }
+}
+
+val voxUiVersion = providers.gradleProperty("voxUiVersion").get()
+val voxUiSha256 = providers.gradleProperty("voxUiSha256").get()
+val voxUiSiblingDir = rootProject.projectDir.resolve("../vox-ui")
+val voxUiMode = localProperties.getProperty("VOX_UI_MODE", "auto")
+val useLocalVoxUi = voxUiMode == "local" ||
+    (voxUiMode == "auto" && voxUiSiblingDir.resolve("package.json").exists())
+val voxUiGeneratedDir = layout.buildDirectory.dir("generated/voxui")
+
+val syncVoxUi by tasks.registering {
+    val webDir = voxUiGeneratedDir.map { it.dir("web").asFile }
+    val marker = voxUiGeneratedDir.map { it.file("web.version").asFile }
+    val wantedMarker = "$voxUiVersion:$voxUiSha256"
+    inputs.property("voxUiMode", if (useLocalVoxUi) "local" else "release")
+    inputs.property("voxUiVersion", voxUiVersion)
+    outputs.dir(voxUiGeneratedDir)
+    outputs.upToDateWhen {
+        !useLocalVoxUi && marker.get().exists() && marker.get().readText() == wantedMarker
+    }
+    doLast {
+        val target = webDir.get()
+        target.deleteRecursively()
+        target.mkdirs()
+        if (useLocalVoxUi) {
+            fun run(vararg command: String) {
+                val process = ProcessBuilder(*command)
+                    .directory(voxUiSiblingDir)
+                    .inheritIO()
+                    .start()
+                check(process.waitFor() == 0) { "${command.joinToString(" ")} failed in vox-ui" }
+            }
+            if (!voxUiSiblingDir.resolve("node_modules").exists()) run("npm", "ci")
+            run("npm", "run", "build:webview")
+            voxUiSiblingDir.resolve("dist-webview").copyRecursively(target, overwrite = true)
+            marker.get().delete()
+        } else {
+            val url = "https://github.com/vox-suite/vox-ui/releases/download/v$voxUiVersion/" +
+                "vox-ui-webview-$voxUiVersion.zip"
+            val archive = temporaryDir.resolve("vox-ui-webview.zip")
+            URI(url).toURL().openStream().use { input ->
+                archive.outputStream().use { input.copyTo(it) }
+            }
+            val digest = MessageDigest.getInstance("SHA-256")
+                .digest(archive.readBytes())
+                .joinToString("") { "%02x".format(it) }
+            check(digest == voxUiSha256) { "vox-ui bundle checksum mismatch: $digest" }
+            ZipInputStream(archive.inputStream()).use { zip ->
+                generateSequence { zip.nextEntry }.forEach { entry ->
+                    val out = target.resolve(entry.name).canonicalFile
+                    check(out.path.startsWith(target.canonicalPath)) { "unsafe zip entry" }
+                    if (entry.isDirectory) out.mkdirs() else {
+                        out.parentFile.mkdirs()
+                        out.outputStream().use { zip.copyTo(it) }
+                    }
+                }
+            }
+            marker.get().writeText(wantedMarker)
+        }
+    }
+}
+
+tasks.configureEach {
+    if (name.startsWith("merge") && name.endsWith("Assets")) dependsOn(syncVoxUi)
 }
 
 android {
@@ -30,6 +97,11 @@ android {
             "\"${localProperties.getProperty("GOOGLE_WEB_CLIENT_ID", "")}\"",
         )
         buildConfigField(
+            "boolean",
+            "USE_WEB_SPANS",
+            localProperties.getProperty("USE_WEB_SPANS", "false"),
+        )
+        buildConfigField(
             "String",
             "VOX_API_BASE_URL",
             "\"${localProperties.getProperty("VOX_API_BASE_URL", "https://api.voxagent.in")}\"",
@@ -40,6 +112,10 @@ android {
         release {
             isMinifyEnabled = false
         }
+    }
+
+    sourceSets {
+        getByName("main").assets.directories.add(voxUiGeneratedDir.get().asFile.absolutePath)
     }
 
     buildFeatures {
@@ -65,6 +141,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
+    implementation("androidx.webkit:webkit:1.17.1")
     implementation("androidx.work:work-runtime-ktx:2.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.11.0")
