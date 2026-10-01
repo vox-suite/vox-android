@@ -1,6 +1,9 @@
 package `in`.voxagent.mobile.voice
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import android.media.AudioAttributes
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -29,6 +32,7 @@ private const val PLAYBACK_SAMPLE_RATE = 44100
  * device-native rate only) no manual resampling is needed on either side.
  */
 class VoiceAudioEngine(context: Context) {
+    private val appContext = context.applicationContext
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var savedMode = AudioManager.MODE_NORMAL
     private var savedSpeakerphone = false
@@ -58,6 +62,12 @@ class VoiceAudioEngine(context: Context) {
         )
         if (minBuf <= 0) {
             throw IllegalStateException("Device does not support 16kHz mono audio capture")
+        }
+
+        if (ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            throw IllegalStateException("Microphone permission not granted")
         }
 
         val record = AudioRecord(

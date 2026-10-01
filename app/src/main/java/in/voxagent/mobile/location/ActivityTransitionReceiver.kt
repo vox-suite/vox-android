@@ -1,9 +1,12 @@
 package `in`.voxagent.mobile.location
 
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.SystemClock
+import androidx.core.content.ContextCompat
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.google.android.gms.location.ActivityTransition
@@ -67,6 +70,12 @@ class ActivityTransitionReceiver : BroadcastReceiver() {
             Instant.parse(segment.ended_at),
         )
         if (minutes < MIN_VISIT_MINUTES) return null
+
+        val granted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) return null
 
         val location = runCatching {
             LocationServices.getFusedLocationProviderClient(context).lastLocation.await()

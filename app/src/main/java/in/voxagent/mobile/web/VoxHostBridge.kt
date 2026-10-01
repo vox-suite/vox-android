@@ -8,13 +8,22 @@ import kotlinx.serialization.json.put
 import java.time.Instant
 
 private const val REFRESH_BEFORE_EXPIRY_SECONDS = 300L
+private const val MAX_ERROR_LENGTH = 200
 
 class VoxHostBridge(private val tokenProvider: () -> String?) {
     private var cached: WebSession? = null
 
     @JavascriptInterface
     @Synchronized
-    fun getSession(): String {
+    fun getSession(): String = try {
+        currentSession()
+    } catch (e: Exception) {
+        buildJsonObject {
+            put("error", (e.message ?: "Session unavailable").take(MAX_ERROR_LENGTH))
+        }.toString()
+    }
+
+    private fun currentSession(): String {
         val deadline = Instant.now().plusSeconds(REFRESH_BEFORE_EXPIRY_SECONDS)
         val session = cached?.takeIf { it.expiresAt.isAfter(deadline) } ?: run {
             val token = tokenProvider() ?: throw IllegalStateException("Not signed in")

@@ -1,5 +1,8 @@
 package `in`.voxagent.mobile.map
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import android.annotation.SuppressLint
 import android.content.Context
 import android.location.Location
@@ -60,7 +63,7 @@ private const val STYLE_URL = "https://tiles.openfreemap.org/styles/dark"
 private const val FALLBACK_LAT = 0.0
 private const val FALLBACK_LNG = 0.0
 private const val MAP_ZOOM = 16.0
-private const val MAP_PITCH = 62.0
+private const val MAP_PITCH = 60.0
 private const val MAP_BEARING = -28.0
 private const val ORBIT_DEG_PER_SEC = 4.0
 private const val VIEW_PAD_DEG = 0.01
@@ -479,7 +482,11 @@ private fun highlightBuildingAt(map: MapLibreMap, loc: LatLng) {
 private val DEFAULT_LOCATION = LatLng(FALLBACK_LAT, FALLBACK_LNG)
 
 private suspend fun resolveLocation(context: Context, granted: Boolean): LatLng {
-    if (!granted) return DEFAULT_LOCATION
+    val permitted = ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.ACCESS_FINE_LOCATION,
+    ) == PackageManager.PERMISSION_GRANTED
+    if (!granted || !permitted) return DEFAULT_LOCATION
     val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
     for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
         if (!lm.isProviderEnabled(provider)) continue

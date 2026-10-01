@@ -611,6 +611,25 @@ private fun HomeScreen(
           }
       }
 
+      AnimatedVisibility(
+          visible = selectedTab == VoxNavTab.Layers,
+          enter = fadeIn() + slideInVertically(initialOffsetY = { it / 4 }),
+          exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 4 }),
+          modifier = Modifier.fillMaxSize(),
+      ) {
+          if (token != null) {
+              VoxWebScreen(
+                  route = "pulse",
+                  tokenProvider = { latestToken },
+                  modifier = Modifier
+                      .fillMaxSize()
+                      .statusBarsPadding()
+                      .navigationBarsPadding()
+                      .padding(bottom = 80.dp),
+              )
+          }
+      }
+
       // Floating Bottom Navigation Menu (Unified Translucent Container)
       VoxBottomNav(
           selectedTab = selectedTab,

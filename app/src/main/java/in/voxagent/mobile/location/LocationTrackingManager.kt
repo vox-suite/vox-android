@@ -1,8 +1,12 @@
 package `in`.voxagent.mobile.location
 
+import android.Manifest
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
 import com.google.android.gms.location.ActivityRecognition
 import com.google.android.gms.location.ActivityTransition
 import com.google.android.gms.location.ActivityTransitionRequest
@@ -30,6 +34,12 @@ object LocationTrackingManager {
     }
 
     suspend fun start(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACTIVITY_RECOGNITION) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
         val transitions = TRACKED_ACTIVITIES.flatMap { type ->
             listOf(
                 ActivityTransition.Builder()
@@ -49,6 +59,12 @@ object LocationTrackingManager {
     }
 
     suspend fun stop(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACTIVITY_RECOGNITION) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
         runCatching {
             ActivityRecognition.getClient(context)
                 .removeActivityTransitionUpdates(pendingIntent(context))

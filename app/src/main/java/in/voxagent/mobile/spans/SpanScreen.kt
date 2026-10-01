@@ -73,7 +73,6 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
-import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -304,7 +303,7 @@ private fun SpanHeader(
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Text(
-                        text = anchor.month.getDisplayName(TextStyle.SHORT, Locale.getDefault()).uppercase(),
+                        text = anchor.month.getDisplayName(TextStyle.SHORT, androidx.compose.ui.text.intl.Locale.current.platformLocale).uppercase(),
                         color = CoralPulse,
                         fontSize = 8.sp,
                         fontFamily = FontFamily.Monospace,
@@ -572,7 +571,7 @@ private fun SpanDayWeekGrid(
                             .padding(vertical = 6.dp),
                     ) {
                         Text(
-                            text = day.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()).uppercase(),
+                            text = day.dayOfWeek.getDisplayName(TextStyle.SHORT, androidx.compose.ui.text.intl.Locale.current.platformLocale).uppercase(),
                             color = if (isToday) Color.White.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.4f),
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
