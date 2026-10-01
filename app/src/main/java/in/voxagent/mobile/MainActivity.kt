@@ -58,6 +58,7 @@ import `in`.voxagent.mobile.voice.VoiceEvent
 import `in`.voxagent.mobile.voice.VoiceSession
 import `in`.voxagent.mobile.voice.VoiceStatus
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -635,5 +636,10 @@ private fun schedulePeriodicSync(activity: ComponentActivity) {
 
 private fun triggerImmediateSync(activity: ComponentActivity) {
     val request = OneTimeWorkRequestBuilder<SmsSyncWorker>().build()
-    WorkManager.getInstance(activity).enqueue(request)
+    // Unique so repeated taps or app opens never run overlapping syncs.
+    WorkManager.getInstance(activity).enqueueUniqueWork(
+        "sms_sync_now",
+        ExistingWorkPolicy.KEEP,
+        request,
+    )
 }

@@ -6,14 +6,23 @@ import java.time.Instant
 
 class SmsReader(private val context: Context) {
 
-    fun readSince(sinceEpochMillis: Long, limit: Int): List<SmsMessage> {
+    /** The newest [limit] messages, returned oldest first. Used for the very first sync. */
+    fun readLatest(limit: Int): List<SmsMessage> = query(null, null, "DESC", limit).reversed()
+
+    fun readSince(sinceEpochMillis: Long, limit: Int): List<SmsMessage> =
+        query("${Telephony.Sms.DATE} > ?", arrayOf(sinceEpochMillis.toString()), "ASC", limit)
+
+    private fun query(
+        selection: String?,
+        selectionArgs: Array<String>?,
+        order: String,
+        limit: Int,
+    ): List<SmsMessage> {
         val projection = arrayOf(
             Telephony.Sms.ADDRESS,
             Telephony.Sms.BODY,
             Telephony.Sms.DATE,
         )
-        val selection = "${Telephony.Sms.DATE} > ?"
-        val selectionArgs = arrayOf(sinceEpochMillis.toString())
 
         val messages = mutableListOf<SmsMessage>()
         context.contentResolver.query(
@@ -21,7 +30,7 @@ class SmsReader(private val context: Context) {
             projection,
             selection,
             selectionArgs,
-            "${Telephony.Sms.DATE} ASC LIMIT $limit",
+            "${Telephony.Sms.DATE} $order LIMIT $limit",
         )?.use { cursor ->
             val addressIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
             val bodyIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.BODY)

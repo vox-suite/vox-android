@@ -41,38 +41,50 @@ class SmsSyncWorker(
             RemoteLog.w(TAG, "SMS consent not granted on server, nothing to sync")
             return@withContext Result.failure()
         }
-        val since = consent.synced_until?.let { java.time.Instant.parse(it).toEpochMilli() }
-            ?: (System.currentTimeMillis() - consent.retention_days * MILLIS_PER_DAY)
-        RemoteLog.i(TAG, "sync starting, reading messages since=$since")
+        // The server's cursor is the source of truth; keep the local copy in step with it.
+        val serverCursor = consent.synced_until?.let { java.time.Instant.parse(it).toEpochMilli() }
+        serverCursor?.let { SmsSyncStore.advance(applicationContext, it) }
+        var cursor = SmsSyncStore.cursor(applicationContext)
+        RemoteLog.i(TAG, "sync starting: server_cursor=$serverCursor local_cursor=$cursor")
 
-        var latestSeen = since
         var totalRead = 0
         var totalUploaded = 0
         var totalOtpSkipped = 0
 
-        while (true) {
-            val messages = reader.readSince(latestSeen, BATCH_SIZE)
-            if (messages.isEmpty()) break
+        suspend fun syncPage(messages: List<SmsMessage>): Boolean {
             totalRead += messages.size
-
             val uploadable = messages.filterNot { looksLikeOtp(it.body) }
             totalOtpSkipped += messages.size - uploadable.size
+            val newestMillis = java.time.Instant.parse(messages.last().received_at).toEpochMilli()
+            var syncedMillis = newestMillis
             if (uploadable.isNotEmpty()) {
                 RemoteLog.i(TAG, "uploading batch of ${uploadable.size} messages (page had ${messages.size})")
-                runCatching { SmsBatchApi.submitBatch(uploadable, token) }
-                    .onSuccess {
-                        totalUploaded += uploadable.size
-                        showToast(applicationContext, "Vox: synced ${uploadable.size} SMS")
-                    }
-                    .onFailure {
+                val response = runCatching { SmsBatchApi.submitBatch(uploadable, token) }
+                    .getOrElse {
                         RemoteLog.e(TAG, "batch upload failed: $it")
-                        return@withContext Result.retry()
+                        return false
                     }
+                totalUploaded += uploadable.size
+                showToast(applicationContext, "Vox: synced ${uploadable.size} SMS")
+                response.synced_until?.let {
+                    syncedMillis = maxOf(syncedMillis, java.time.Instant.parse(it).toEpochMilli())
+                }
             }
+            SmsSyncStore.advance(applicationContext, syncedMillis)
+            cursor = syncedMillis
+            return true
+        }
 
-            val newestMillis = java.time.Instant.parse(messages.last().received_at).toEpochMilli()
-            latestSeen = newestMillis
+        if (cursor == null) {
+            // First ever sync: only the most recent messages, not the whole inbox.
+            val first = reader.readLatest(FIRST_SYNC_MESSAGES)
+            if (first.isNotEmpty() && !syncPage(first)) return@withContext Result.retry()
+        }
 
+        while (true) {
+            val messages = reader.readSince(cursor ?: 0L, BATCH_SIZE)
+            if (messages.isEmpty()) break
+            if (!syncPage(messages)) return@withContext Result.retry()
             if (messages.size < BATCH_SIZE) break
         }
 
@@ -82,8 +94,8 @@ class SmsSyncWorker(
 
     companion object {
         const val UNIQUE_WORK_NAME = "sms_sync"
-        private const val BATCH_SIZE = 100
-        private const val MILLIS_PER_DAY = 24L * 60 * 60 * 1000
+        private const val BATCH_SIZE = 256
+        private const val FIRST_SYNC_MESSAGES = 256
     }
 }
 
