@@ -77,7 +77,9 @@ val syncVoxUi by tasks.registering {
 }
 
 tasks.configureEach {
-    if (name.startsWith("merge") && name.endsWith("Assets")) dependsOn(syncVoxUi)
+    if (name != "syncVoxUi" && (name.contains("Assets") || name.contains("lint", ignoreCase = true))) {
+        dependsOn(syncVoxUi)
+    }
 }
 
 android {
