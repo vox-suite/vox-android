@@ -78,7 +78,10 @@ import `in`.voxagent.mobile.map.MissionMapBackground
 import `in`.voxagent.mobile.sms.SmsConsentApi
 import `in`.voxagent.mobile.sms.SmsConsentStatus
 import `in`.voxagent.mobile.sms.SmsSyncWorker
+import `in`.voxagent.mobile.phone.PhoneApi
+import `in`.voxagent.mobile.phone.PhoneStatus
 import `in`.voxagent.mobile.ui.ConsentScreen
+import `in`.voxagent.mobile.ui.PhoneVerificationFlow
 import `in`.voxagent.mobile.ui.LocationConsentScreen
 import `in`.voxagent.mobile.ui.VoxAtmosphereBackground
 import `in`.voxagent.mobile.ui.VoxBottomNav
@@ -139,6 +142,8 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
             signedIn = false
         }
     }
+    var phoneStatus by remember { mutableStateOf<PhoneStatus?>(null) }
+    var phoneVerifySkipped by remember { mutableStateOf(false) }
     var consentStatus by remember { mutableStateOf<SmsConsentStatus?>(null) }
     var showConsentScreen by remember { mutableStateOf(false) }
     var smsPermissionGranted by remember {
@@ -228,6 +233,8 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
     LaunchedEffect(signedIn) {
         if (!signedIn) return@LaunchedEffect
         val token = authManager.currentToken() ?: return@LaunchedEffect
+        runCatching { PhoneApi.status(token) }
+            .onSuccess { phoneStatus = it }
         runCatching { SmsConsentApi.getStatus(token) }
             .onSuccess { status ->
                 consentStatus = status
@@ -260,6 +267,18 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
                     }
                 }
             },
+        )
+        return
+    }
+
+    val currentPhone = phoneStatus
+    val phoneToken = authManager.currentToken()
+    if (currentPhone != null && phoneToken != null && !currentPhone.phone_verified && !phoneVerifySkipped) {
+        PhoneVerificationFlow(
+            token = phoneToken,
+            status = currentPhone,
+            onVerified = { phoneStatus = PhoneStatus(has_phone = true, phone_verified = true) },
+            onSkip = { phoneVerifySkipped = true },
         )
         return
     }
