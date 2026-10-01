@@ -1,6 +1,6 @@
 package `in`.voxagent.mobile.voice
 
-import android.util.Log
+import timber.log.Timber
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
 import javazoom.jl.decoder.Bitstream
@@ -23,7 +23,7 @@ class Mp3StreamDecoder(private val onPcm: (samples: ShortArray, sampleRate: Int,
 
     @Synchronized
     fun start() {
-        Log.d(TAG, "start")
+        Timber.tag(TAG).d("start")
         stop()
         val input = PipedInputStream(PIPE_BUFFER_SIZE)
         val output = PipedOutputStream(input)
@@ -37,16 +37,16 @@ class Mp3StreamDecoder(private val onPcm: (samples: ShortArray, sampleRate: Int,
 
     @Synchronized
     fun enqueueChunk(bytes: ByteArray) {
-        Log.d(TAG, "enqueueChunk: ${bytes.size} bytes")
+        Timber.tag(TAG).d("enqueueChunk: ${bytes.size} bytes")
         val out = pipeOut ?: run {
-            Log.w(TAG, "enqueueChunk: no pipe open, dropping ${bytes.size} bytes")
+            Timber.tag(TAG).w("enqueueChunk: no pipe open, dropping ${bytes.size} bytes")
             return
         }
         try {
             out.write(bytes)
             out.flush()
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to enqueue MP3 chunk (decoder stopped?): ${e.message}")
+            Timber.tag(TAG).w("Failed to enqueue MP3 chunk (decoder stopped?): ${e.message}")
         }
     }
 
@@ -59,7 +59,7 @@ class Mp3StreamDecoder(private val onPcm: (samples: ShortArray, sampleRate: Int,
     }
 
     private fun decodeLoop(input: PipedInputStream) {
-        Log.d(TAG, "decodeLoop: started")
+        Timber.tag(TAG).d("decodeLoop: started")
         val bitstream = Bitstream(input)
         val decoder = Decoder()
         var frameCount = 0
@@ -68,7 +68,7 @@ class Mp3StreamDecoder(private val onPcm: (samples: ShortArray, sampleRate: Int,
                 val header = try {
                     bitstream.readFrame()
                 } catch (e: BitstreamException) {
-                    Log.w(TAG, "MP3 decoding warning: ${e.message}")
+                    Timber.tag(TAG).w("MP3 decoding warning: ${e.message}")
                     break
                 } ?: break
 
@@ -76,23 +76,20 @@ class Mp3StreamDecoder(private val onPcm: (samples: ShortArray, sampleRate: Int,
                 if (output is SampleBuffer && output.bufferLength > 0) {
                     frameCount++
                     val samples = output.buffer.copyOf(output.bufferLength)
-                    Log.d(
-                        TAG,
-                        "decodeLoop: frame #$frameCount bufferLength=${output.bufferLength} " +
-                            "sampleRate=${output.sampleFrequency} channels=${output.channelCount}",
-                    )
+                    Timber.tag(TAG).d("decodeLoop: frame #$frameCount bufferLength=${output.bufferLength} " +
+"sampleRate=${output.sampleFrequency} channels=${output.channelCount}")
                     onPcm(samples, output.sampleFrequency, output.channelCount)
                 } else {
-                    Log.d(TAG, "decodeLoop: frame decoded to non-audio output: $output")
+                    Timber.tag(TAG).d("decodeLoop: frame decoded to non-audio output: $output")
                 }
                 bitstream.closeFrame()
             }
         } catch (e: Exception) {
             if (!Thread.currentThread().isInterrupted) {
-                Log.w(TAG, "MP3 decode loop stopped: ${e.message}")
+                Timber.tag(TAG).w("MP3 decode loop stopped: ${e.message}")
             }
         } finally {
-            Log.d(TAG, "decodeLoop: exiting after $frameCount frames")
+            Timber.tag(TAG).d("decodeLoop: exiting after $frameCount frames")
             runCatching { bitstream.close() }
         }
     }

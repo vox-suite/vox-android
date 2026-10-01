@@ -1,5 +1,6 @@
 package `in`.voxagent.mobile.auth
 
+import androidx.core.content.edit
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -25,15 +26,13 @@ class SessionStore(context: Context) {
         displayName: String? = null,
         avatarUrl: String? = null,
     ) {
-        val editor = prefs.edit()
-            .putString(KEY_TOKEN, token)
-            .putLong(KEY_EXPIRES_AT, expiresAt.toEpochMilli())
-
-        if (email != null) editor.putString(KEY_EMAIL, email)
-        if (displayName != null) editor.putString(KEY_DISPLAY_NAME, displayName)
-        if (avatarUrl != null) editor.putString(KEY_AVATAR_URL, avatarUrl)
-
-        editor.apply()
+        prefs.edit {
+            putString(KEY_TOKEN, token)
+            putLong(KEY_EXPIRES_AT, expiresAt.toEpochMilli())
+            if (email != null) putString(KEY_EMAIL, email)
+            if (displayName != null) putString(KEY_DISPLAY_NAME, displayName)
+            if (avatarUrl != null) putString(KEY_AVATAR_URL, avatarUrl)
+        }
     }
 
     fun updateProfile(
@@ -41,11 +40,11 @@ class SessionStore(context: Context) {
         displayName: String? = null,
         avatarUrl: String? = null,
     ) {
-        val editor = prefs.edit()
-        if (email != null) editor.putString(KEY_EMAIL, email)
-        if (displayName != null) editor.putString(KEY_DISPLAY_NAME, displayName)
-        if (avatarUrl != null) editor.putString(KEY_AVATAR_URL, avatarUrl)
-        editor.apply()
+        prefs.edit {
+            if (email != null) putString(KEY_EMAIL, email)
+            if (displayName != null) putString(KEY_DISPLAY_NAME, displayName)
+            if (avatarUrl != null) putString(KEY_AVATAR_URL, avatarUrl)
+        }
     }
 
     fun currentToken(): String? {
@@ -62,7 +61,7 @@ class SessionStore(context: Context) {
     fun getUserAvatarUrl(): String? = prefs.getString(KEY_AVATAR_URL, null)
 
     fun clear() {
-        prefs.edit().clear().apply()
+        prefs.edit { clear() }
     }
 
     companion object {

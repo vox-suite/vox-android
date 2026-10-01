@@ -1,6 +1,6 @@
 package `in`.voxagent.mobile.ui
 
-import android.graphics.Bitmap
+import androidx.core.graphics.createBitmap
 import android.graphics.BitmapShader
 import android.graphics.Shader
 import androidx.compose.foundation.background
@@ -35,7 +35,7 @@ fun Modifier.voxGrain(
     val density = LocalDensity.current
     val tilePx = with(density) { tileSize.roundToPx() }.coerceIn(32, 512)
     val noiseBrush = remember(tilePx) {
-        val bitmap = Bitmap.createBitmap(tilePx, tilePx, Bitmap.Config.ARGB_8888)
+        val bitmap = createBitmap(tilePx, tilePx)
         val random = Random(42)
         val pixels = IntArray(tilePx * tilePx) {
             val v = random.nextInt(256)

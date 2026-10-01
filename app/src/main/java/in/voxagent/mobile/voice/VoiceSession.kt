@@ -1,5 +1,6 @@
 package `in`.voxagent.mobile.voice
 
+import timber.log.Timber
 import `in`.voxagent.mobile.BuildConfig
 import `in`.voxagent.mobile.auth.AuthManager
 import `in`.voxagent.mobile.logging.RemoteLog
@@ -152,12 +153,12 @@ class VoiceSession(private val context: Context) {
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
-                Log.d(TAG, "onMessage(text): $text")
+                Timber.tag(TAG).d("onMessage(text): $text")
                 handleServerMessage(text)
             }
 
             override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
-                Log.d(TAG, "onMessage(bytes): ${bytes.size} bytes")
+                Timber.tag(TAG).d("onMessage(bytes): ${bytes.size} bytes")
                 onAudioFrame(bytes.size)
                 audioEngine.mp3Decoder.enqueueChunk(bytes.toByteArray())
             }
@@ -179,7 +180,7 @@ class VoiceSession(private val context: Context) {
 
     private fun startPingTimer(ws: WebSocket) {
         val timer = Timer("voice-ping", true)
-        timer.scheduleAtFixedRate(object : TimerTask() {
+        timer.schedule(object : TimerTask() {
             override fun run() {
                 ws.send(protocolJson.encodeToString(VoiceClientMessage.serializer(), VoiceClientMessage.Ping))
                 RemoteLog.i(TAG, "PLAYBACK STATS ~15s: underruns_total=${audioEngine.underrunCount()} queued_chunks=${audioEngine.queuedChunkCount()} playing=${audioEngine.isPlaying()}")
@@ -189,7 +190,7 @@ class VoiceSession(private val context: Context) {
     }
 
     private fun startAudio(ws: WebSocket) {
-        Log.d(TAG, "startAudio: starting playback + capture")
+        Timber.tag(TAG).d("startAudio: starting playback + capture")
         audioEngine.startPlayback()
 
         val speechBuffer = ArrayList<Short>(16000 * 5)
@@ -205,7 +206,7 @@ class VoiceSession(private val context: Context) {
         var consecutiveLoudChunks = 0
         var lastPlayingAt = 0L
 
-        Log.d(TAG, "startAudio: SPEECH_THRESHOLD=$SPEECH_THRESHOLD MIN_UTTERANCE_SAMPLES=$MIN_UTTERANCE_SAMPLES SILENCE_TIMEOUT_MS=$SILENCE_TIMEOUT_MS")
+        Timber.tag(TAG).d("startAudio: SPEECH_THRESHOLD=$SPEECH_THRESHOLD MIN_UTTERANCE_SAMPLES=$MIN_UTTERANCE_SAMPLES SILENCE_TIMEOUT_MS=$SILENCE_TIMEOUT_MS")
 
         audioEngine.startCapture { samples ->
             val rms = kotlin.math.sqrt(
@@ -214,7 +215,7 @@ class VoiceSession(private val context: Context) {
 
             val now = System.currentTimeMillis()
             if (now - lastLevelLog >= 1000) {
-                Log.d(TAG, "mic level: rms=$rms threshold=$SPEECH_THRESHOLD isInSpeech=$isInSpeech")
+                Timber.tag(TAG).d("mic level: rms=$rms threshold=$SPEECH_THRESHOLD isInSpeech=$isInSpeech")
                 lastLevelLog = now
             }
             micChunks++
@@ -241,7 +242,7 @@ class VoiceSession(private val context: Context) {
                     ws.send(protocolJson.encodeToString(VoiceClientMessage.serializer(), VoiceClientMessage.Interrupt))
                     _events.tryEmit(VoiceEvent.Interrupted)
                 }
-                if (!isInSpeech) Log.d(TAG, "startAudio: speech started (rms=$rms)")
+                if (!isInSpeech) Timber.tag(TAG).d("startAudio: speech started (rms=$rms)")
                 speechBuffer.addAll(samples.asList())
                 lastSpeechTime = now
                 isInSpeech = true
@@ -251,7 +252,7 @@ class VoiceSession(private val context: Context) {
                 speechBuffer.addAll(samples.asList())
                 if (now - lastSpeechTime >= SILENCE_TIMEOUT_MS) {
                     isInSpeech = false
-                    Log.d(TAG, "startAudio: speech ended, buffered ${speechBuffer.size} samples")
+                    Timber.tag(TAG).d("startAudio: speech ended, buffered ${speechBuffer.size} samples")
                     if (speechBuffer.size >= MIN_UTTERANCE_SAMPLES) {
                         val utterance = speechBuffer.toShortArray()
                         speechBuffer.clear()
@@ -316,7 +317,7 @@ class VoiceSession(private val context: Context) {
         val message = try {
             protocolJson.decodeFromString(VoiceServerMessage.serializer(), text)
         } catch (e: Exception) {
-            Log.w(TAG, "Unrecognized voice server message: $text", e)
+            Timber.tag(TAG).w(e, "Unrecognized voice server message: $text")
             return
         }
 

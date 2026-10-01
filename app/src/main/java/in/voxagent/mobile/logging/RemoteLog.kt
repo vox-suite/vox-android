@@ -1,5 +1,7 @@
 package `in`.voxagent.mobile.logging
 
+import androidx.core.content.edit
+import timber.log.Timber
 import android.content.Context
 import android.util.Log
 import `in`.voxagent.mobile.BuildConfig
@@ -42,7 +44,7 @@ object RemoteLog {
         val appContext = context.applicationContext
         val prefs = appContext.getSharedPreferences("remote_log", Context.MODE_PRIVATE)
         val deviceId = prefs.getString("device_id", null)
-            ?: UUID.randomUUID().toString().also { prefs.edit().putString("device_id", it).apply() }
+            ?: UUID.randomUUID().toString().also { prefs.edit { putString("device_id", it) } }
         val auth = AuthManager(appContext)
 
         scope.launch {
@@ -62,10 +64,10 @@ object RemoteLog {
         }
     }
 
-    fun d(tag: String, message: String, tr: Throwable? = null) { Log.d(tag, message, tr); enqueue("D", tag, message, tr) }
-    fun i(tag: String, message: String, tr: Throwable? = null) { Log.i(tag, message, tr); enqueue("I", tag, message, tr) }
-    fun w(tag: String, message: String, tr: Throwable? = null) { Log.w(tag, message, tr); enqueue("W", tag, message, tr) }
-    fun e(tag: String, message: String, tr: Throwable? = null) { Log.e(tag, message, tr); enqueue("E", tag, message, tr) }
+    fun d(tag: String, message: String, tr: Throwable? = null) { Timber.tag(tag).d(tr, message); enqueue("D", tag, message, tr) }
+    fun i(tag: String, message: String, tr: Throwable? = null) { Timber.tag(tag).i(tr, message); enqueue("I", tag, message, tr) }
+    fun w(tag: String, message: String, tr: Throwable? = null) { Timber.tag(tag).w(tr, message); enqueue("W", tag, message, tr) }
+    fun e(tag: String, message: String, tr: Throwable? = null) { Timber.tag(tag).e(tr, message); enqueue("E", tag, message, tr) }
 
     private fun enqueue(level: String, tag: String, message: String, tr: Throwable?) {
         val text = if (tr == null) message else "$message | ${Log.getStackTraceString(tr)}"

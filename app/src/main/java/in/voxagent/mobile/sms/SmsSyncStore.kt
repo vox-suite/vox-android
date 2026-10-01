@@ -1,5 +1,6 @@
 package `in`.voxagent.mobile.sms
 
+import androidx.core.content.edit
 import android.content.Context
 
 /** Local copy of the last synced SMS timestamp (epoch millis); only ever moves forward. */
@@ -16,7 +17,7 @@ object SmsSyncStore {
         val current = cursor(context)
         if (current == null || millis > current) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit().putLong(KEY_CURSOR, millis).apply()
+                .edit { putLong(KEY_CURSOR, millis) }
         }
     }
 }

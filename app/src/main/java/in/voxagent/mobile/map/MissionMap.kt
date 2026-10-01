@@ -1,5 +1,7 @@
 package `in`.voxagent.mobile.map
 
+import androidx.core.graphics.toColorInt
+import androidx.core.content.edit
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
@@ -125,7 +127,7 @@ private class MissionMapController(private val context: Context) {
         org.maplibre.android.maps.MapLibreMapOptions.createFromAttributes(context).textureMode(true),
     ).apply {
         // Guarantee dark canvas before tiles composite to prevent white flashing
-        setBackgroundColor(android.graphics.Color.parseColor("#040506"))
+        setBackgroundColor("#040506".toColorInt())
         // Consume all touch events so map gestures (pan, zoom, pinch, tilt) are denied
         setOnTouchListener { _, _ -> true }
         onCreate(null)
@@ -199,11 +201,11 @@ private class MissionMapController(private val context: Context) {
         homeCenter = loc
 
         // Save location and bearing to cache so next launch immediately starts here
-        prefs.edit()
-            .putFloat(KEY_CACHED_LAT, loc.latitude.toFloat())
-            .putFloat(KEY_CACHED_LNG, loc.longitude.toFloat())
-            .putFloat(KEY_CACHED_BEARING, map.cameraPosition.bearing.toFloat())
-            .apply()
+        prefs.edit {
+            putFloat(KEY_CACHED_LAT, loc.latitude.toFloat())
+            putFloat(KEY_CACHED_LNG, loc.longitude.toFloat())
+            putFloat(KEY_CACHED_BEARING, map.cameraPosition.bearing.toFloat())
+        }
 
         orbit?.pause(2200)
         applyHome(map, loc)

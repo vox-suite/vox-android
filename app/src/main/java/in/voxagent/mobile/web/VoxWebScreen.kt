@@ -3,6 +3,7 @@ package `in`.voxagent.mobile.web
 import android.annotation.SuppressLint
 import android.graphics.Color
 import android.view.ViewGroup
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -10,6 +11,9 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -38,6 +42,39 @@ private fun contentSecurityPolicy(): String {
     ).joinToString("; ")
 }
 
+@SuppressLint("MissingOnRenderProcessGone")
+private class VoxWebViewClient(
+    private val assetLoader: WebViewAssetLoader,
+    private val policy: String,
+    private val onRenderProcessCrashed: () -> Unit,
+) : WebViewClient() {
+    override fun shouldInterceptRequest(
+        view: WebView,
+        request: WebResourceRequest,
+    ): WebResourceResponse? {
+        val response = assetLoader.shouldInterceptRequest(request.url) ?: return null
+        if (request.url.path == ENTRY_PATH) {
+            response.responseHeaders =
+                (response.responseHeaders ?: emptyMap()) +
+                ("Content-Security-Policy" to policy)
+        }
+        return response
+    }
+
+    override fun onRenderProcessGone(
+        view: WebView,
+        detail: RenderProcessGoneDetail,
+    ): Boolean {
+        onRenderProcessCrashed()
+        return true
+    }
+
+    override fun shouldOverrideUrlLoading(
+        view: WebView,
+        request: WebResourceRequest,
+    ): Boolean = request.url.host != ASSET_HOST
+}
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun VoxWebScreen(
@@ -46,7 +83,8 @@ fun VoxWebScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val webView = remember(route) {
+    var generation by remember { mutableIntStateOf(0) }
+    val webView = remember(route, generation) {
         val assetLoader = WebViewAssetLoader.Builder()
             .setDomain(ASSET_HOST)
             .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(context))
@@ -70,25 +108,7 @@ fun VoxWebScreen(
             }
             WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
             addJavascriptInterface(VoxHostBridge(tokenProvider), "VoxHost")
-            webViewClient = object : WebViewClient() {
-                override fun shouldInterceptRequest(
-                    view: WebView,
-                    request: WebResourceRequest,
-                ): WebResourceResponse? {
-                    val response = assetLoader.shouldInterceptRequest(request.url) ?: return null
-                    if (request.url.path == ENTRY_PATH) {
-                        response.responseHeaders =
-                            (response.responseHeaders ?: emptyMap()) +
-                            ("Content-Security-Policy" to policy)
-                    }
-                    return response
-                }
-
-                override fun shouldOverrideUrlLoading(
-                    view: WebView,
-                    request: WebResourceRequest,
-                ): Boolean = request.url.host != ASSET_HOST
-            }
+            webViewClient = VoxWebViewClient(assetLoader, policy) { generation += 1 }
             loadUrl("$ENTRY_URL#/$route")
         }
     }

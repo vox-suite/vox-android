@@ -1,6 +1,8 @@
 package `in`.voxagent.mobile
 
+import androidx.core.graphics.toColorInt
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.util.Log
 import android.os.Bundle
@@ -90,7 +92,6 @@ import `in`.voxagent.mobile.ui.VoxNavTab
 import `in`.voxagent.mobile.ui.VoxPrimaryButton
 import `in`.voxagent.mobile.ui.VoxProfileSheet
 import `in`.voxagent.mobile.ui.VoxWordmark
-import `in`.voxagent.mobile.spans.SpanScreen
 import `in`.voxagent.mobile.web.VoxWebScreen
 import `in`.voxagent.mobile.ui.theme.BorderSubtle
 import `in`.voxagent.mobile.ui.theme.CoralPulse
@@ -115,7 +116,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Ensure the decor view immediately renders Void Black to avoid any white flash
-        window.decorView.setBackgroundColor(android.graphics.Color.parseColor("#040506"))
+        window.decorView.setBackgroundColor("#040506".toColorInt())
         `in`.voxagent.mobile.logging.RemoteLog.init(applicationContext)
         authManager = AuthManager(applicationContext)
 
@@ -132,6 +133,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@SuppressLint("InlinedApi")
 @Composable
 fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
     val scope = rememberCoroutineScope()
@@ -608,23 +610,15 @@ private fun HomeScreen(
           modifier = Modifier.fillMaxSize(),
       ) {
           if (token != null) {
-              if (BuildConfig.USE_WEB_SPANS) {
-                  VoxWebScreen(
-                      route = "timeline",
-                      tokenProvider = { latestToken },
-                      modifier = Modifier
-                          .fillMaxSize()
-                          .statusBarsPadding()
-                          .navigationBarsPadding()
-                          .padding(bottom = 80.dp),
-                  )
-              } else {
-                  SpanScreen(
-                      token = token,
-                      active = selectedTab == VoxNavTab.Span,
-                      modifier = Modifier.fillMaxSize(),
-                  )
-              }
+              VoxWebScreen(
+                  route = "timeline",
+                  tokenProvider = { latestToken },
+                  modifier = Modifier
+                      .fillMaxSize()
+                      .statusBarsPadding()
+                      .navigationBarsPadding()
+                      .padding(bottom = 80.dp),
+              )
           }
       }
 

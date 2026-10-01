@@ -10,7 +10,7 @@ Open the project in Android Studio and run it on a device or emulator (`minSdk 2
 
 ## Shared web UI
 
-Timeline (and later Pulse and Spaces) can be rendered from the shared [vox-ui](https://github.com/vox-suite/vox-ui) bundle inside a `WebView` instead of native Compose screens. Set `USE_WEB_SPANS=true` in `local.properties` to switch the Span tab to it; it defaults to `false`.
+The Span tab (Timeline) and the Layers tab (Pulse and Spaces) are the shared [vox-ui](https://github.com/vox-suite/vox-ui) bundle running in a `WebView`; there are no native copies of those screens.
 
 The Gradle task `syncVoxUi` puts the bundle in `assets/web`:
 

@@ -1,5 +1,6 @@
 package `in`.voxagent.mobile.location
 
+import androidx.core.content.edit
 import android.content.Context
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -11,16 +12,19 @@ class PendingSegmentStore(context: Context) {
     private val prefs = context.getSharedPreferences("location_tracking", Context.MODE_PRIVATE)
 
     fun openSegmentStart(activity: ActivityKind, atMillis: Long) {
-        prefs.edit()
-            .putString("open_activity", activity.name)
-            .putLong("open_started_at", atMillis)
-            .apply()
+        prefs.edit {
+            putString("open_activity", activity.name)
+            putLong("open_started_at", atMillis)
+        }
     }
 
     fun closeOpenSegment(endedAtMillis: Long): LocationSegment? {
         val activityName = prefs.getString("open_activity", null)
         val startedAtMillis = prefs.getLong("open_started_at", -1L)
-        prefs.edit().remove("open_activity").remove("open_started_at").apply()
+        prefs.edit {
+            remove("open_activity")
+            remove("open_started_at")
+        }
         if (activityName == null || startedAtMillis < 0 || endedAtMillis <= startedAtMillis) return null
         val activity = runCatching { ActivityKind.valueOf(activityName) }.getOrNull() ?: return null
         return LocationSegment(
@@ -32,7 +36,7 @@ class PendingSegmentStore(context: Context) {
 
     fun enqueue(segment: LocationSegment) {
         val pending = pendingSegments() + segment
-        prefs.edit().putString("pending_segments", json.encodeToString(pending)).apply()
+        prefs.edit { putString("pending_segments", json.encodeToString(pending)) }
     }
 
     fun pendingSegments(): List<LocationSegment> {
@@ -42,6 +46,6 @@ class PendingSegmentStore(context: Context) {
 
     fun clearUploaded(uploaded: List<LocationSegment>) {
         val remaining = pendingSegments() - uploaded.toSet()
-        prefs.edit().putString("pending_segments", json.encodeToString(remaining)).apply()
+        prefs.edit { putString("pending_segments", json.encodeToString(remaining)) }
     }
 }

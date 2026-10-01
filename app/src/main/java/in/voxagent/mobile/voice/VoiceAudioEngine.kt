@@ -1,5 +1,6 @@
 package `in`.voxagent.mobile.voice
 
+import timber.log.Timber
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -93,7 +94,7 @@ class VoiceAudioEngine(context: Context) {
         audioRecord = record
         capturing = true
         record.startRecording()
-        Log.d(TAG, "startCapture: recordingState=${record.recordingState} minBuf=$minBuf")
+        Timber.tag(TAG).d("startCapture: recordingState=${record.recordingState} minBuf=$minBuf")
 
         val thread = Thread({
             val buffer = ShortArray(minBuf / 2)
@@ -105,7 +106,7 @@ class VoiceAudioEngine(context: Context) {
                     readCount++
                     val now = System.currentTimeMillis()
                     if (now - lastLog >= 1000) {
-                        Log.d(TAG, "capture: read $read shorts (call #$readCount)")
+                        Timber.tag(TAG).d("capture: read $read shorts (call #$readCount)")
                         lastLog = now
                     }
                     onSamples(buffer.copyOf(read))
@@ -113,7 +114,7 @@ class VoiceAudioEngine(context: Context) {
                     RemoteLog.w(TAG, "capture: AudioRecord.read returned error code $read")
                 }
             }
-            Log.d(TAG, "capture: loop exiting after $readCount successful reads")
+            Timber.tag(TAG).d("capture: loop exiting after $readCount successful reads")
         }, "voice-mic-capture")
         thread.isDaemon = true
         captureThread = thread
@@ -184,7 +185,7 @@ class VoiceAudioEngine(context: Context) {
             AudioFormat.CHANNEL_OUT_MONO,
             AudioFormat.ENCODING_PCM_16BIT,
         )
-        Log.d(TAG, "startPlayback: minBuf=$minBuf")
+        Timber.tag(TAG).d("startPlayback: minBuf=$minBuf")
         val track = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -207,23 +208,23 @@ class VoiceAudioEngine(context: Context) {
         audioTrack = track
         playing = true
         track.play()
-        Log.d(TAG, "startPlayback: after play() playState=${track.playState}")
+        Timber.tag(TAG).d("startPlayback: after play() playState=${track.playState}")
 
         val thread = Thread({
-            Log.d(TAG, "playback thread started")
+            Timber.tag(TAG).d("playback thread started")
             while (playing) {
                 val chunk = pcmQueue.poll(100, TimeUnit.MILLISECONDS) ?: continue
                 val epochAtEnqueue = chunk.first
                 if (epochAtEnqueue != playbackEpoch.get()) {
-                    Log.d(TAG, "playback: dropping stale chunk (epoch $epochAtEnqueue != ${playbackEpoch.get()})")
+                    Timber.tag(TAG).d("playback: dropping stale chunk (epoch $epochAtEnqueue != ${playbackEpoch.get()})")
                     queuedChunks.decrementAndGet()
                     continue
                 }
                 val written = track.write(chunk.second, 0, chunk.second.size)
-                Log.d(TAG, "playback: wrote $written/${chunk.second.size} shorts, playState=${track.playState}, queued=${queuedChunks.get()}")
+                Timber.tag(TAG).d("playback: wrote $written/${chunk.second.size} shorts, playState=${track.playState}, queued=${queuedChunks.get()}")
                 queuedChunks.decrementAndGet()
             }
-            Log.d(TAG, "playback thread exiting")
+            Timber.tag(TAG).d("playback thread exiting")
         }, "voice-playback")
         thread.isDaemon = true
         playbackThread = thread
@@ -269,7 +270,7 @@ class VoiceAudioEngine(context: Context) {
     }
 
     private fun enqueuePlayback(samples: ShortArray, sampleRate: Int, channels: Int) {
-        Log.d(TAG, "enqueuePlayback: ${samples.size} samples, sampleRate=$sampleRate, channels=$channels")
+        Timber.tag(TAG).d("enqueuePlayback: ${samples.size} samples, sampleRate=$sampleRate, channels=$channels")
         if (sampleRate != PLAYBACK_SAMPLE_RATE) {
             RemoteLog.w(TAG, "Skipping MP3 frame at unexpected sample rate $sampleRate (expected $PLAYBACK_SAMPLE_RATE)")
             return

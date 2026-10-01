@@ -1,7 +1,7 @@
 package `in`.voxagent.mobile.net
 
+import timber.log.Timber
 import android.os.SystemClock
-import android.util.Log
 import `in`.voxagent.mobile.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -48,27 +48,24 @@ object VoxHttp {
             bearerToken.isBlank() -> "token=blank"
             else -> "token=len${bearerToken.length},parts${bearerToken.split('.').size}"
         }
-        Log.d(TAG, "-> $target $tokenInfo")
+        Timber.tag(TAG).d("-> $target $tokenInfo")
         val startedAt = SystemClock.elapsedRealtime()
         try {
             client.newCall(request).execute().use { response ->
                 val responseBody = response.body?.string().orEmpty()
                 val elapsed = SystemClock.elapsedRealtime() - startedAt
                 if (!response.isSuccessful) {
-                    Log.w(
-                        TAG,
-                        "<- ${response.code} $target ${elapsed}ms $tokenInfo body=${responseBody.take(300)}",
-                    )
+                    Timber.tag(TAG).w("<- ${response.code} $target ${elapsed}ms $tokenInfo body=${responseBody.take(300)}")
                     if (response.code == 401 && bearerToken != null) {
                         _unauthorized.tryEmit(Unit)
                     }
                     throw VoxHttpException(response.code, responseBody)
                 }
-                Log.d(TAG, "<- ${response.code} $target ${elapsed}ms")
+                Timber.tag(TAG).d("<- ${response.code} $target ${elapsed}ms")
                 responseBody
             }
         } catch (e: IOException) {
-            Log.e(TAG, "!! $target failed before a response: ${e::class.simpleName}: ${e.message}")
+            Timber.tag(TAG).e("!! $target failed before a response: ${e::class.simpleName}: ${e.message}")
             throw e
         }
     }
