@@ -115,8 +115,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Ensure the decor view immediately renders Void Black to avoid any white flash
-        window.decorView.setBackgroundColor("#040506".toColorInt())
+        // Ensure the decor view and window immediately render Void Black to avoid any white flash
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0xFF040506.toInt()))
+        window.decorView.setBackgroundColor(0xFF040506.toInt())
         `in`.voxagent.mobile.logging.RemoteLog.init(applicationContext)
         authManager = AuthManager(applicationContext)
 
