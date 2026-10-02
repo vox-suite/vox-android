@@ -1,5 +1,6 @@
 package `in`.voxagent.mobile.ui
 
+import `in`.voxagent.mobile.net.VoxHttpException
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -89,7 +90,11 @@ fun PhoneVerificationFlow(
                     sendCode()
                 }
                 .onFailure {
-                    error = "Couldn't save your number. Check it and try again."
+                    error = if (it is VoxHttpException && it.statusCode == 409) {
+                        phoneErrorMessage(it)
+                    } else {
+                        "Couldn't save your number. Check it and try again."
+                    }
                     busy = false
                 }
         }

@@ -34,6 +34,7 @@ fun phoneErrorMessage(error: Throwable): String = when (error) {
     is VoxHttpException -> when (error.statusCode) {
         400 -> "That code is invalid or has expired."
         404 -> "Add a phone number first."
+        409 -> "That number is already verified on another Vox account."
         429 -> "Too many codes requested. Try again later."
         502, 503 -> "We couldn't send the code right now. Try again in a moment."
         else -> "Verification failed (${error.statusCode})."
