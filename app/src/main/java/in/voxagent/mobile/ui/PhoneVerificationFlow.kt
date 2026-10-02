@@ -40,6 +40,7 @@ fun PhoneVerificationFlow(
     token: String,
     status: PhoneStatus,
     onVerified: () -> Unit,
+    onSkip: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     var linked by remember { mutableStateOf(status.has_phone) }
@@ -184,6 +185,10 @@ fun PhoneVerificationFlow(
 
         if (error.isNotEmpty()) {
             Text(text = error, color = CoralPulse, fontSize = 13.sp)
+        }
+
+        if (linked) {
+            VoxTextButton(text = "Verify later", onClick = { if (!busy) onSkip() })
         }
     }
 }

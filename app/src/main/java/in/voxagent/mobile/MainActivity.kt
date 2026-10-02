@@ -145,6 +145,7 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
         }
     }
     var phoneStatus by remember { mutableStateOf<PhoneStatus?>(null) }
+    var phoneVerifySkipped by remember { mutableStateOf(false) }
     var consentStatus by remember { mutableStateOf<SmsConsentStatus?>(null) }
     var showConsentScreen by remember { mutableStateOf(false) }
     var smsPermissionGranted by remember {
@@ -274,11 +275,12 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
 
     val currentPhone = phoneStatus
     val phoneToken = authManager.currentToken()
-    if (currentPhone != null && phoneToken != null && !currentPhone.phone_verified) {
+    if (currentPhone != null && phoneToken != null && !currentPhone.phone_verified && !phoneVerifySkipped) {
         PhoneVerificationFlow(
             token = phoneToken,
             status = currentPhone,
             onVerified = { phoneStatus = PhoneStatus(has_phone = true, phone_verified = true) },
+            onSkip = { phoneVerifySkipped = true },
         )
         return
     }
