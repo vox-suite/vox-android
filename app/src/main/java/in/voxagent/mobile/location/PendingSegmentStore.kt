@@ -2,14 +2,36 @@ package `in`.voxagent.mobile.location
 
 import androidx.core.content.edit
 import android.content.Context
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 private val json = Json { ignoreUnknownKeys = true }
 
+private const val MAX_PENDING = 500
+
 class PendingSegmentStore(context: Context) {
-    private val prefs = context.getSharedPreferences("location_tracking", Context.MODE_PRIVATE)
+    private val prefs = EncryptedSharedPreferences.create(
+        context,
+        "location_tracking_secure",
+        MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+    )
+
+    init {
+        val legacy = context.getSharedPreferences("location_tracking", Context.MODE_PRIVATE)
+        if (legacy.all.isNotEmpty()) {
+            prefs.edit {
+                legacy.getString("pending_segments", null)?.let { putString("pending_segments", it) }
+                legacy.getString("open_activity", null)?.let { putString("open_activity", it) }
+                if (legacy.contains("open_started_at")) putLong("open_started_at", legacy.getLong("open_started_at", -1L))
+            }
+            legacy.edit { clear() }
+        }
+    }
 
     fun openSegmentStart(activity: ActivityKind, atMillis: Long) {
         prefs.edit {
@@ -35,7 +57,7 @@ class PendingSegmentStore(context: Context) {
     }
 
     fun enqueue(segment: LocationSegment) {
-        val pending = pendingSegments() + segment
+        val pending = (pendingSegments() + segment).takeLast(MAX_PENDING)
         prefs.edit { putString("pending_segments", json.encodeToString(pending)) }
     }
 

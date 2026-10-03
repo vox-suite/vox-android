@@ -13,15 +13,19 @@ import com.google.android.gms.location.ActivityTransition
 import com.google.android.gms.location.ActivityTransitionResult
 import com.google.android.gms.location.DetectedActivity
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
 // A stop shorter than this is noise (a red light, a queue) — not worth naming or a Places API call.
 private const val MIN_VISIT_MINUTES = 5
+private const val FIX_TIMEOUT_MS = 8_000L
+private const val MAX_CACHED_FIX_AGE_MS = 30 * 60 * 1000L
 
 class ActivityTransitionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -77,9 +81,17 @@ class ActivityTransitionReceiver : BroadcastReceiver() {
         ) == PackageManager.PERMISSION_GRANTED
         if (!granted) return null
 
+        val client = LocationServices.getFusedLocationProviderClient(context)
+        // lastLocation can be null or hours old; ask for a fresh fix first and only fall
+        // back to a cached one if it is recent, so a visit is not dropped or misplaced.
         val location = runCatching {
-            LocationServices.getFusedLocationProviderClient(context).lastLocation.await()
-        }.getOrNull() ?: return null
+            withTimeoutOrNull(FIX_TIMEOUT_MS) {
+                client.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, null).await()
+            }
+        }.getOrNull()
+            ?: runCatching { client.lastLocation.await() }.getOrNull()
+                ?.takeIf { System.currentTimeMillis() - it.time < MAX_CACHED_FIX_AGE_MS }
+            ?: return null
 
         return segment.copy(lat = location.latitude, lng = location.longitude)
     }
