@@ -467,6 +467,8 @@ fun VoxProfileSheet(
     onReviewDataSharing: (() -> Unit)? = null,
     onSyncSmsNow: (() -> Unit)? = null,
     onReviewLocationTracking: (() -> Unit)? = null,
+    onReviewPermissions: (() -> Unit)? = null,
+    permissionsAllSet: Boolean = false,
 ) {
     AnimatedVisibility(
         visible = visible,
@@ -545,8 +547,20 @@ fun VoxProfileSheet(
                         }
                     }
 
-                    if (onReviewDataSharing != null || onReviewLocationTracking != null) {
+                    if (onReviewDataSharing != null || onReviewLocationTracking != null || onReviewPermissions != null) {
                         VoxSettingsGroup {
+                            if (onReviewPermissions != null) {
+                                VoxSettingsRow(
+                                    label = "Permissions",
+                                    trailingText = if (permissionsAllSet) "all set" else "Review",
+                                    trailingTone = if (permissionsAllSet) VoxStatusTone.Success else VoxStatusTone.Neutral,
+                                    showDivider = onReviewDataSharing != null || onReviewLocationTracking != null,
+                                    onClick = {
+                                        onDismiss()
+                                        onReviewPermissions()
+                                    },
+                                )
+                            }
                             if (onReviewDataSharing != null) {
                                 VoxSettingsRow(
                                     label = "Data sharing",
