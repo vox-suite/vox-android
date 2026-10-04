@@ -6,7 +6,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import android.app.Activity
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,20 +27,25 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
+import `in`.voxagent.mobile.ui.theme.VoidBlack
 import `in`.voxagent.mobile.ui.theme.BorderSubtle
 import `in`.voxagent.mobile.ui.theme.CoralPulse
 import `in`.voxagent.mobile.ui.theme.EmberHush
 import `in`.voxagent.mobile.ui.theme.Ink
+import `in`.voxagent.mobile.ui.theme.Mist
 import `in`.voxagent.mobile.ui.theme.Slate
 import `in`.voxagent.mobile.ui.theme.Smoke
 import `in`.voxagent.mobile.ui.theme.SuccessGreen
@@ -222,7 +230,7 @@ fun VoxSettingsRow(
         ) {
             Text(
                 text = label,
-                color = MaterialTheme.colorScheme.onBackground,
+                color = Mist,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Normal,
             )
@@ -254,4 +262,18 @@ fun VoxSectionLabel(text: String) {
         letterSpacing = 1.5.sp,
         textAlign = TextAlign.Start,
     )
+}
+
+@Composable
+fun VoxDarkScreen(content: @Composable BoxScope.() -> Unit) {
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val controller = (view.context as? Activity)?.window?.let { WindowCompat.getInsetsController(it, view) }
+        val previous = controller?.isAppearanceLightStatusBars
+        controller?.isAppearanceLightStatusBars = false
+        onDispose {
+            if (controller != null && previous != null) controller.isAppearanceLightStatusBars = previous
+        }
+    }
+    Box(modifier = Modifier.fillMaxSize().background(VoidBlack), content = content)
 }

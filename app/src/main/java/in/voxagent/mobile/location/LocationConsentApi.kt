@@ -12,6 +12,8 @@ data class LocationConsentStatus(
     val synced_until: String? = null,
 )
 
+const val LOCATION_RETENTION_DAYS = 90
+
 @Serializable
 private data class GrantConsentRequest(val retention_days: Int)
 
@@ -23,7 +25,7 @@ object LocationConsentApi {
         return json.decodeFromString(LocationConsentStatus.serializer(), responseJson)
     }
 
-    suspend fun grant(bearerToken: String, retentionDays: Int = 90): LocationConsentStatus {
+    suspend fun grant(bearerToken: String, retentionDays: Int = LOCATION_RETENTION_DAYS): LocationConsentStatus {
         val requestJson = json.encodeToString(
             GrantConsentRequest.serializer(),
             GrantConsentRequest(retention_days = retentionDays),

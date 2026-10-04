@@ -2,13 +2,17 @@ package `in`.voxagent.mobile.ui
 
 import `in`.voxagent.mobile.net.VoxHttpException
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -18,9 +22,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import `in`.voxagent.mobile.phone.PhoneApi
@@ -28,12 +34,29 @@ import `in`.voxagent.mobile.phone.PhoneStatus
 import `in`.voxagent.mobile.phone.normalizePhone
 import `in`.voxagent.mobile.phone.phoneErrorMessage
 import `in`.voxagent.mobile.ui.theme.CoralPulse
+import `in`.voxagent.mobile.ui.theme.GraphiteDark
+import `in`.voxagent.mobile.ui.theme.Iron
+import `in`.voxagent.mobile.ui.theme.Mist
+import `in`.voxagent.mobile.ui.theme.SmokeDark
 import `in`.voxagent.mobile.ui.theme.VoxFunnelDisplayFontFamily
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val CODE_LENGTH = 6
 private const val RESEND_SECONDS = 30
+
+@Composable
+private fun darkFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = Mist,
+    unfocusedTextColor = Mist,
+    disabledTextColor = SmokeDark,
+    focusedBorderColor = Mist,
+    unfocusedBorderColor = Iron,
+    disabledBorderColor = Iron,
+    cursorColor = Mist,
+    focusedPlaceholderColor = SmokeDark,
+    unfocusedPlaceholderColor = SmokeDark,
+)
 
 @Composable
 fun PhoneVerificationFlow(
@@ -114,19 +137,27 @@ fun PhoneVerificationFlow(
         }
     }
 
+    VoxDarkScreen {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 24.dp, vertical = 32.dp),
+            .padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Spacer(modifier = Modifier.fillMaxHeight(0.25f))
+        VoxLogo(modifier = Modifier.offset(y = (-20).dp), size = 80.dp, animated = true)
+        Column(
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             Text(
                 text = if (linked) "Verify your number" else "Your number",
-                color = MaterialTheme.colorScheme.onBackground,
+                color = Mist,
                 fontFamily = VoxFunnelDisplayFontFamily,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 22.sp,
+                textAlign = TextAlign.Center,
             )
             Text(
                 text = when {
@@ -134,9 +165,10 @@ fun PhoneVerificationFlow(
                     linked -> "Confirm the number you linked so Vox can safely reach you. We'll send a code on WhatsApp."
                     else -> "Add the phone number you call Vox from, with its country code. Only use a number that's yours."
                 },
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = GraphiteDark,
                 fontSize = 13.sp,
                 lineHeight = 19.sp,
+                textAlign = TextAlign.Center,
             )
         }
 
@@ -150,6 +182,7 @@ fun PhoneVerificationFlow(
                     enabled = !busy,
                     placeholder = { Text("+1 555 000 1234") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    colors = darkFieldColors(),
                 )
                 VoxPrimaryButton(
                     text = if (busy) "Saving…" else "Continue",
@@ -171,6 +204,7 @@ fun PhoneVerificationFlow(
                     enabled = !busy,
                     placeholder = { Text("123456") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    colors = darkFieldColors(),
                 )
                 VoxPrimaryButton(
                     text = if (busy) "Verifying…" else "Verify",
@@ -184,11 +218,10 @@ fun PhoneVerificationFlow(
         }
 
         if (error.isNotEmpty()) {
-            Text(text = error, color = CoralPulse, fontSize = 13.sp)
+            Text(text = error, color = CoralPulse, fontSize = 13.sp, textAlign = TextAlign.Center)
         }
 
-        if (linked) {
-            VoxTextButton(text = "Verify later", onClick = { if (!busy) onSkip() })
-        }
+        VoxTextButton(text = "Verify later", onClick = { if (!busy) onSkip() })
+    }
     }
 }

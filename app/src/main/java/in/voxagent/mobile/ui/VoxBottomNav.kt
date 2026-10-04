@@ -2,6 +2,8 @@ package `in`.voxagent.mobile.ui
 
 import android.graphics.BitmapFactory
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -81,10 +83,11 @@ import java.io.File
 
 enum class VoxNavTab {
     Home,
-    Agent,
     Layers,
     Span,
 }
+
+enum class TalkState { Idle, Connecting, Active, Error }
 
 /**
  * Unified bottom navigation bar matching the tactile Vox design system.
@@ -101,8 +104,8 @@ fun VoxBottomNav(
     modifier: Modifier = Modifier,
     selectedTab: VoxNavTab = VoxNavTab.Home,
     onTabSelected: (VoxNavTab) -> Unit = {},
-    talkText: String = "Speak",
-    onTalkClick: (() -> Unit)? = null,
+    talkState: TalkState = TalkState.Idle,
+    onTalkClick: () -> Unit = {},
     onLogoClick: (() -> Unit)? = null,
     hazeState: HazeState? = null,
 ) {
@@ -179,7 +182,23 @@ fun VoxBottomNav(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            // Section 2: Translucent "Speak" Pill with Mic Icon and matched text (no glow)
+            val active = talkState == TalkState.Active
+            val pillColor by animateColorAsState(
+                targetValue = when {
+                    active -> CoralPulse.copy(alpha = 0.92f)
+                    hazeState != null -> Color.Transparent
+                    else -> VoidBlack.copy(alpha = 0.72f)
+                },
+                label = "talkPillColor",
+            )
+            val pillBorder by animateColorAsState(
+                targetValue = when {
+                    active -> CoralPulse
+                    talkState == TalkState.Error -> CoralPulse.copy(alpha = 0.7f)
+                    else -> BorderSubtle.copy(alpha = 0.6f)
+                },
+                label = "talkPillBorder",
+            )
             Surface(
                 modifier = Modifier
                     .height(52.dp)
@@ -188,33 +207,47 @@ fun VoxBottomNav(
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                        onClick = {
-                            if (onTalkClick != null) {
-                                onTalkClick()
-                            } else {
-                                onTabSelected(
-                                    if (selectedTab == VoxNavTab.Agent) VoxNavTab.Home else VoxNavTab.Agent,
-                                )
-                            }
-                        },
+                        onClick = onTalkClick,
                     ),
                 shape = RoundedCornerShape(50),
-                color = if (hazeState != null) Color.Transparent else VoidBlack.copy(alpha = 0.72f),
-                border = BorderStroke(1.dp, BorderSubtle.copy(alpha = 0.6f)),
+                color = pillColor,
+                border = BorderStroke(1.dp, pillBorder),
                 shadowElevation = 8.dp,
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                    modifier = Modifier
+                        .animateContentSize()
+                        .padding(horizontal = 18.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_mic),
-                        contentDescription = "Speak",
-                        tint = PureWhite,
-                        modifier = Modifier
-                            .size(24.dp)
-                            .aspectRatio(1f),
+                    if (active) {
+                        Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(PureWhite),
+                            )
+                        }
+                    } else {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_mic),
+                            contentDescription = null,
+                            tint = if (talkState == TalkState.Connecting) PureWhite.copy(alpha = 0.5f) else PureWhite,
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                    Text(
+                        text = when (talkState) {
+                            TalkState.Idle -> "Talk"
+                            TalkState.Connecting -> "Connecting…"
+                            TalkState.Active -> "End call"
+                            TalkState.Error -> "Retry"
+                        },
+                        color = PureWhite,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 14.sp,
                     )
                 }
             }
@@ -463,10 +496,6 @@ fun VoxProfileSheet(
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
     onSyncProfile: (() -> Unit)? = null,
-    smsDataSharingGranted: Boolean = false,
-    onReviewDataSharing: (() -> Unit)? = null,
-    onSyncSmsNow: (() -> Unit)? = null,
-    onReviewLocationTracking: (() -> Unit)? = null,
     onReviewPermissions: (() -> Unit)? = null,
     permissionsAllSet: Boolean = false,
 ) {
@@ -547,52 +576,18 @@ fun VoxProfileSheet(
                         }
                     }
 
-                    if (onReviewDataSharing != null || onReviewLocationTracking != null || onReviewPermissions != null) {
+                    if (onReviewPermissions != null) {
                         VoxSettingsGroup {
-                            if (onReviewPermissions != null) {
-                                VoxSettingsRow(
-                                    label = "Permissions",
-                                    trailingText = if (permissionsAllSet) "all set" else "Review",
-                                    trailingTone = if (permissionsAllSet) VoxStatusTone.Success else VoxStatusTone.Neutral,
-                                    showDivider = onReviewDataSharing != null || onReviewLocationTracking != null,
-                                    onClick = {
-                                        onDismiss()
-                                        onReviewPermissions()
-                                    },
-                                )
-                            }
-                            if (onReviewDataSharing != null) {
-                                VoxSettingsRow(
-                                    label = "Data sharing",
-                                    trailingText = if (smsDataSharingGranted) "on" else "Review",
-                                    trailingTone = if (smsDataSharingGranted) VoxStatusTone.Success else VoxStatusTone.Neutral,
-                                    showDivider = (smsDataSharingGranted && onSyncSmsNow != null) || onReviewLocationTracking != null,
-                                    onClick = {
-                                        onDismiss()
-                                        onReviewDataSharing()
-                                    },
-                                )
-                            }
-                            if (smsDataSharingGranted && onSyncSmsNow != null) {
-                                VoxSettingsRow(
-                                    label = "Sync SMS now",
-                                    showDivider = onReviewLocationTracking != null,
-                                    onClick = {
-                                        onDismiss()
-                                        onSyncSmsNow()
-                                    },
-                                )
-                            }
-                            if (onReviewLocationTracking != null) {
-                                VoxSettingsRow(
-                                    label = "Location tracking",
-                                    showDivider = false,
-                                    onClick = {
-                                        onDismiss()
-                                        onReviewLocationTracking()
-                                    },
-                                )
-                            }
+                            VoxSettingsRow(
+                                label = "Permissions",
+                                trailingText = if (permissionsAllSet) "all set" else "Review",
+                                trailingTone = if (permissionsAllSet) VoxStatusTone.Success else VoxStatusTone.Neutral,
+                                showDivider = false,
+                                onClick = {
+                                    onDismiss()
+                                    onReviewPermissions()
+                                },
+                            )
                         }
                     }
 

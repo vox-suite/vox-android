@@ -32,7 +32,10 @@ object VoxHttp {
             bearerToken,
         )
 
-    private fun url(path: String) = BuildConfig.VOX_API_BASE_URL.trimEnd('/') + path
+    suspend fun getJson(path: String, bearerToken: String? = null): String =
+        execute(Request.Builder().url(url(path)).get(), bearerToken)
+
+    internal fun url(path: String) = BuildConfig.VOX_API_BASE_URL.trimEnd('/') + path
 
     private suspend fun execute(
         requestBuilder: Request.Builder,

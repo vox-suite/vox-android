@@ -15,7 +15,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,9 +23,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -39,6 +38,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.Lifecycle
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,9 +61,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import `in`.voxagent.mobile.voice.VoiceEvent
 import `in`.voxagent.mobile.voice.VoiceSession
 import `in`.voxagent.mobile.voice.VoiceStatus
+import kotlinx.coroutines.delay
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -83,11 +85,10 @@ import `in`.voxagent.mobile.sms.SmsConsentStatus
 import `in`.voxagent.mobile.sms.SmsSyncWorker
 import `in`.voxagent.mobile.phone.PhoneApi
 import `in`.voxagent.mobile.phone.PhoneStatus
-import `in`.voxagent.mobile.ui.ConsentScreen
-import `in`.voxagent.mobile.ui.PermissionsPrompt
+import `in`.voxagent.mobile.ui.PermissionsScreen
 import `in`.voxagent.mobile.ui.PhoneVerificationFlow
-import `in`.voxagent.mobile.ui.LocationConsentScreen
 import `in`.voxagent.mobile.ui.VoxAtmosphereBackground
+import `in`.voxagent.mobile.ui.TalkState
 import `in`.voxagent.mobile.ui.VoxBottomNav
 import `in`.voxagent.mobile.ui.VoxLogo
 import `in`.voxagent.mobile.ui.VoxNavTab
@@ -95,18 +96,13 @@ import `in`.voxagent.mobile.ui.VoxPrimaryButton
 import `in`.voxagent.mobile.ui.VoxProfileSheet
 import `in`.voxagent.mobile.ui.VoxWordmark
 import `in`.voxagent.mobile.web.VoxWebScreen
-import `in`.voxagent.mobile.ui.theme.BorderSubtle
+import `in`.voxagent.mobile.ui.theme.GraphiteDark
+import `in`.voxagent.mobile.ui.theme.Mist
 import `in`.voxagent.mobile.ui.theme.CoralPulse
-import `in`.voxagent.mobile.ui.theme.Ink
-import `in`.voxagent.mobile.ui.theme.PureWhite
-import `in`.voxagent.mobile.ui.theme.Smoke
-import `in`.voxagent.mobile.ui.theme.VoidBlack
+import `in`.voxagent.mobile.ui.theme.VoxSpaceGroteskFontFamily
 import `in`.voxagent.mobile.ui.theme.VoxTheme
 import `in`.voxagent.mobile.ui.voxGrain
-import dev.chrisbanes.haze.HazeDefaults
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
@@ -150,7 +146,6 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
     var phoneStatus by remember { mutableStateOf<PhoneStatus?>(null) }
     var phoneVerifySkipped by remember { mutableStateOf(false) }
     var consentStatus by remember { mutableStateOf<SmsConsentStatus?>(null) }
-    var showConsentScreen by remember { mutableStateOf(false) }
     var smsPermissionGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -162,10 +157,14 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
     var statusMessage by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
 
-    LaunchedEffect(smsPermissionGranted) {
+    LaunchedEffect(smsPermissionGranted, consentStatus) {
         // Re-applied on every launch (not just a fresh grant) so an interval change
         // here actually reaches devices that already granted SMS access.
-        if (smsPermissionGranted) schedulePeriodicSync(activity)
+        if (smsPermissionGranted && consentStatus?.granted == true) {
+            schedulePeriodicSync(activity)
+        } else if (consentStatus?.granted == false) {
+            WorkManager.getInstance(activity).cancelUniqueWork(SmsSyncWorker.UNIQUE_WORK_NAME)
+        }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -188,7 +187,6 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
     }
 
     var locationConsentStatus by remember { mutableStateOf<LocationConsentStatus?>(null) }
-    var showLocationConsentScreen by remember { mutableStateOf(false) }
     var activityRecognitionGranted by remember {
         mutableStateOf(
             Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
@@ -221,8 +219,6 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         backgroundLocationGranted = granted
-        permissionsPromptOpen = false
-        permissionsPromptForced = false
     }
     val runtimePermissionsLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -237,12 +233,28 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
         locationPermissionGranted = fine
         activityRecognitionGranted = result[Manifest.permission.ACTIVITY_RECOGNITION] ?: activityRecognitionGranted
         // Background location must be asked for separately, after foreground location is granted.
-        if (fine && !backgroundLocationGranted) {
+        if (result[Manifest.permission.ACCESS_FINE_LOCATION] == true && fine && !backgroundLocationGranted) {
             backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-        } else {
-            permissionsPromptOpen = false
-            permissionsPromptForced = false
         }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        fun granted(permission: String) =
+            ContextCompat.checkSelfPermission(activity, permission) == PackageManager.PERMISSION_GRANTED
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                micGranted = granted(Manifest.permission.RECORD_AUDIO)
+                smsPermissionGranted = granted(Manifest.permission.READ_SMS)
+                locationPermissionGranted = granted(Manifest.permission.ACCESS_FINE_LOCATION)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    activityRecognitionGranted = granted(Manifest.permission.ACTIVITY_RECOGNITION)
+                    backgroundLocationGranted = granted(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     LaunchedEffect(
@@ -255,6 +267,8 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
             locationPermissionGranted && activityRecognitionGranted && backgroundLocationGranted
         ) {
             LocationTrackingManager.start(activity)
+        } else if (locationConsentStatus?.granted == false) {
+            LocationTrackingManager.stopAndClear(activity)
         }
     }
 
@@ -301,90 +315,90 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
         return
     }
 
-    if (showConsentScreen) {
-        var consentError by remember { mutableStateOf("") }
-        ConsentScreen(
-            loading = busy,
-            errorMessage = consentError,
-            onAllow = {
-                val token = authManager.currentToken() ?: return@ConsentScreen
-                busy = true
-                consentError = ""
-                scope.launch {
-                    runCatching { SmsConsentApi.grant(token) }
-                        .onSuccess {
-                            consentStatus = it
-                            showConsentScreen = false
-                            if (!smsPermissionGranted) {
-                                permissionLauncher.launch(Manifest.permission.READ_SMS)
-                            }
-                        }
-                        .onFailure { consentError = "Couldn't save: ${it}" }
-                    busy = false
-                }
-            },
-            onDecline = { showConsentScreen = false },
-        )
-        return
-    }
-
-    if (showLocationConsentScreen) {
-        var locationConsentError by remember { mutableStateOf("") }
-        LocationConsentScreen(
-            loading = busy,
-            errorMessage = locationConsentError,
-            onAllow = {
-                val token = authManager.currentToken() ?: return@LocationConsentScreen
-                busy = true
-                locationConsentError = ""
-                scope.launch {
-                    runCatching { LocationConsentApi.grant(token) }
-                        .onSuccess {
-                            locationConsentStatus = it
-                            showLocationConsentScreen = false
-                            permissionsPromptForced = false
-                            permissionsPromptOpen = true
-                        }
-                        .onFailure { locationConsentError = "Couldn't save: ${it}" }
-                    busy = false
-                }
-            },
-            onDecline = { showLocationConsentScreen = false },
-        )
-        return
-    }
-
     val allPermissionsSet = micGranted && smsPermissionGranted && locationPermissionGranted &&
         activityRecognitionGranted && backgroundLocationGranted &&
         consentStatus?.granted == true && locationConsentStatus?.granted == true
+    LaunchedEffect(allPermissionsSet) {
+        if (allPermissionsSet && !permissionsPromptForced) permissionsPromptOpen = false
+    }
+
     if (permissionsPromptOpen && consentStatus != null && locationConsentStatus != null &&
         (permissionsPromptForced || !allPermissionsSet)
     ) {
-        PermissionsPrompt(
-            loading = permissionsPromptBusy,
+        fun saving(block: suspend (String) -> Unit) {
+            val token = authManager.currentToken() ?: return
+            permissionsPromptBusy = true
+            permissionsPromptError = ""
+            scope.launch {
+                runCatching { block(token) }.onFailure { permissionsPromptError = "Couldn't save: $it" }
+                permissionsPromptBusy = false
+            }
+        }
+        PermissionsScreen(
+            micOn = micGranted,
+            smsOn = consentStatus?.granted == true && smsPermissionGranted,
+            locationOn = locationConsentStatus?.granted == true && locationPermissionGranted &&
+                activityRecognitionGranted && backgroundLocationGranted,
+            busy = permissionsPromptBusy,
             errorMessage = permissionsPromptError,
-            onAgree = {
-                val token = authManager.currentToken() ?: return@PermissionsPrompt
-                permissionsPromptBusy = true
-                permissionsPromptError = ""
-                scope.launch {
-                    runCatching {
+            onToggleMic = { on ->
+                if (on) {
+                    runtimePermissionsLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
+                } else {
+                    openAppSettings(activity)
+                }
+            },
+            onToggleSms = { on ->
+                saving { token ->
+                    if (on) {
                         if (consentStatus?.granted != true) consentStatus = SmsConsentApi.grant(token)
+                        if (smsPermissionGranted) {
+                            schedulePeriodicSync(activity)
+                            triggerImmediateSync(activity)
+                        } else {
+                            permissionLauncher.launch(Manifest.permission.READ_SMS)
+                        }
+                    } else {
+                        SmsConsentApi.revoke(token)
+                        consentStatus = consentStatus?.copy(granted = false)
+                        WorkManager.getInstance(activity).cancelUniqueWork(SmsSyncWorker.UNIQUE_WORK_NAME)
+                    }
+                }
+            },
+            onToggleLocation = { on ->
+                saving { token ->
+                    if (on) {
                         if (locationConsentStatus?.granted != true) locationConsentStatus = LocationConsentApi.grant(token)
-                    }.onSuccess {
                         val wanted = buildList {
-                            add(Manifest.permission.RECORD_AUDIO)
-                            add(Manifest.permission.READ_SMS)
                             add(Manifest.permission.ACCESS_FINE_LOCATION)
                             add(Manifest.permission.ACCESS_COARSE_LOCATION)
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) add(Manifest.permission.ACTIVITY_RECOGNITION)
                         }
                         runtimePermissionsLauncher.launch(wanted.toTypedArray())
-                    }.onFailure { permissionsPromptError = "Couldn't save: $it" }
-                    permissionsPromptBusy = false
+                    } else {
+                        LocationConsentApi.revoke(token)
+                        locationConsentStatus = locationConsentStatus?.copy(granted = false)
+                        LocationTrackingManager.stopAndClear(activity)
+                    }
                 }
             },
-            onLater = {
+            onSyncSms = { triggerImmediateSync(activity) },
+            onOpenSettings = { openAppSettings(activity) },
+            onAllowAll = {
+                saving { token ->
+                    if (consentStatus?.granted != true) consentStatus = SmsConsentApi.grant(token)
+                    if (locationConsentStatus?.granted != true) locationConsentStatus = LocationConsentApi.grant(token)
+                    val wanted = buildList {
+                        add(Manifest.permission.RECORD_AUDIO)
+                        add(Manifest.permission.READ_SMS)
+                        add(Manifest.permission.ACCESS_FINE_LOCATION)
+                        add(Manifest.permission.ACCESS_COARSE_LOCATION)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) add(Manifest.permission.ACTIVITY_RECOGNITION)
+                    }
+                    runtimePermissionsLauncher.launch(wanted.toTypedArray())
+                }
+            },
+            onClose = {
                 permissionsPromptOpen = false
                 permissionsPromptForced = false
             },
@@ -407,7 +421,6 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
         token = authManager.currentToken(),
         userProfile = userProfileState,
         locationPermissionGranted = locationPermissionGranted,
-        smsDataSharingGranted = consentStatus?.granted == true,
         onSignOut = {
             authManager.signOut()
             signedIn = false
@@ -421,15 +434,6 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
                 }
             }
         },
-        onReviewDataSharing = { showConsentScreen = true },
-        onSyncSmsNow = {
-            if (smsPermissionGranted) {
-                triggerImmediateSync(activity)
-            } else {
-                permissionLauncher.launch(Manifest.permission.READ_SMS)
-            }
-        },
-        onReviewLocationTracking = { showLocationConsentScreen = true },
         onReviewPermissions = {
             permissionsPromptForced = true
             permissionsPromptOpen = true
@@ -451,35 +455,36 @@ private fun SignInContent(statusMessage: String, onSignIn: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically),
+            .padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 12.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            VoxLogo(size = 80.dp, animated = true)
-        }
+        Spacer(modifier = Modifier.fillMaxHeight(0.25f))
+        VoxLogo(modifier = Modifier.offset(y = (-20).dp), size = 80.dp, animated = true)
 
+        Column(
+            modifier = Modifier.offset(y = (-18).dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = "Vox",
-                color = MaterialTheme.colorScheme.onBackground,
-                fontSize = 32.sp,
+                color = Mist,
+                fontFamily = VoxSpaceGroteskFontFamily,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 36.sp,
             )
             Spacer(modifier = Modifier.width(8.dp))
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .background(androidx.compose.ui.graphics.Color(0xFF3A1418))
                     .padding(horizontal = 8.dp, vertical = 3.dp),
             ) {
                 Text(
                     text = "MOBILE",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Mist,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
                     letterSpacing = 1.sp,
@@ -488,7 +493,7 @@ private fun SignInContent(statusMessage: String, onSignIn: () -> Unit) {
         }
         Text(
             text = "Talk to your agent, manage tasks, and work with your data — all in one place.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = GraphiteDark,
             fontSize = 14.sp,
             textAlign = TextAlign.Center,
         )
@@ -505,6 +510,7 @@ private fun SignInContent(statusMessage: String, onSignIn: () -> Unit) {
             },
             onClick = onSignIn,
         )
+        }
     }
 }
 
@@ -518,12 +524,8 @@ private fun HomeScreen(
     token: String?,
     userProfile: UserProfile,
     locationPermissionGranted: Boolean,
-    smsDataSharingGranted: Boolean,
     onSignOut: () -> Unit,
     onSyncProfile: (() -> Unit)? = null,
-    onReviewDataSharing: (() -> Unit)? = null,
-    onSyncSmsNow: (() -> Unit)? = null,
-    onReviewLocationTracking: (() -> Unit)? = null,
     onReviewPermissions: (() -> Unit)? = null,
     permissionsAllSet: Boolean = false,
 ) {
@@ -535,7 +537,6 @@ private fun HomeScreen(
     val voiceContext = LocalContext.current
     val voiceSession = remember { VoiceSession(voiceContext) }
     var voiceStatus by remember { mutableStateOf(VoiceStatus.IDLE) }
-    var voiceSubtitle by remember { mutableStateOf("Duplex standby") }
     var recordAudioGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -553,20 +554,17 @@ private fun HomeScreen(
     LaunchedEffect(voiceSession) {
         voiceSession.status.collect { voiceStatus = it }
     }
-    LaunchedEffect(voiceSession) {
-        voiceSession.events.collect { event ->
-            voiceSubtitle = when (event) {
-                is VoiceEvent.UserTranscript -> "You: ${event.text}"
-                is VoiceEvent.Delta -> "Vox: ${event.text}"
-                is VoiceEvent.Thinking -> "Thinking…"
-                is VoiceEvent.Done -> "Duplex standby"
-                is VoiceEvent.Interrupted -> "Listening…"
-                is VoiceEvent.Error -> "Error: ${event.message}"
-            }
-        }
-    }
     DisposableEffect(voiceSession) {
         onDispose { voiceSession.stop() }
+    }
+
+    var voxSpeaking by remember { mutableStateOf(false) }
+    LaunchedEffect(voiceStatus) {
+        while (voiceStatus == VoiceStatus.ACTIVE) {
+            voxSpeaking = voiceSession.isVoxSpeaking()
+            delay(100)
+        }
+        voxSpeaking = false
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -575,6 +573,9 @@ private fun HomeScreen(
         MissionMapBackground(
             modifier = Modifier.fillMaxSize(),
             locationPermissionGranted = locationPermissionGranted,
+            token = { latestToken },
+            callActive = voiceStatus == VoiceStatus.ACTIVE,
+            voxSpeaking = voxSpeaking,
         )
 
         // Subtle ambient grain overlay
@@ -584,87 +585,6 @@ private fun HomeScreen(
                 .voxGrain(opacity = 0.05f, blendMode = BlendMode.SrcOver, tileSize = 140.dp),
         )
 
-      }
-
-      // Agent Cockpit Card (shown only when the Agent tab is active on the left pill).
-      // Drawn as a sibling AFTER the hazeSource Box (like the nav bar and profile sheet
-      // below) so it blurs the map behind it instead of being part of its own source.
-      AnimatedVisibility(
-          visible = selectedTab == VoxNavTab.Agent,
-          enter = fadeIn() + slideInVertically(initialOffsetY = { -40 }),
-          exit = fadeOut() + slideOutVertically(targetOffsetY = { -40 }),
-          modifier = Modifier
-              .fillMaxWidth()
-              .align(Alignment.Center)
-              .padding(24.dp),
-      ) {
-          Surface(
-              modifier = Modifier
-                  .clip(RoundedCornerShape(20.dp))
-                  .hazeEffect(
-                      state = hazeState,
-                      style = HazeDefaults.style(
-                          // Lower opacity than the profile sheet/nav pill: this card sits
-                          // dead-center over the dark 3D map, which has far less brightness
-                          // variance to begin with, so the same 0.65/0.5 overlay used
-                          // elsewhere crushes the blurred backdrop to a flat black instead
-                          // of reading as frosted glass.
-                          backgroundColor = VoidBlack.copy(alpha = 0.35f),
-                          tint = HazeTint(Ink.copy(alpha = 0.25f)),
-                          blurRadius = 24.dp,
-                      ),
-                  ),
-              shape = RoundedCornerShape(20.dp),
-              color = Color.Transparent,
-              border = BorderStroke(1.dp, BorderSubtle),
-              shadowElevation = 16.dp,
-          ) {
-              Column(
-                  modifier = Modifier.padding(24.dp),
-                  horizontalAlignment = Alignment.CenterHorizontally,
-                  verticalArrangement = Arrangement.spacedBy(16.dp),
-              ) {
-                  VoxLogo(size = 72.dp, animated = true)
-
-                  Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                      Text(
-                          text = "VOX AGENT",
-                          color = PureWhite,
-                          fontWeight = FontWeight.SemiBold,
-                          fontSize = 18.sp,
-                          letterSpacing = 1.sp,
-                      )
-                      Text(
-                          text = voiceSubtitle,
-                          color = Smoke,
-                          fontFamily = FontFamily.Monospace,
-                          fontSize = 12.sp,
-                      )
-                  }
-
-                  Spacer(modifier = Modifier.height(4.dp))
-
-                  VoxPrimaryButton(
-                      text = when {
-                          voiceStatus == VoiceStatus.CONNECTING -> "Connecting…"
-                          voiceStatus == VoiceStatus.ACTIVE -> "End Call"
-                          else -> "Talk to Vox"
-                      },
-                      onClick = {
-                          when (voiceStatus) {
-                              VoiceStatus.IDLE, VoiceStatus.ERROR -> {
-                                  if (recordAudioGranted) {
-                                      voiceSession.start()
-                                  } else {
-                                      recordAudioLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                  }
-                              }
-                              VoiceStatus.ACTIVE, VoiceStatus.CONNECTING -> voiceSession.stop()
-                          }
-                      },
-                  )
-              }
-          }
       }
 
       // Span Timeline Tab — full-screen overlay, drawn ABOVE the map but BELOW the nav bar
@@ -710,6 +630,24 @@ private fun HomeScreen(
       VoxBottomNav(
           selectedTab = selectedTab,
           onTabSelected = { selectedTab = it },
+          talkState = when (voiceStatus) {
+              VoiceStatus.CONNECTING -> TalkState.Connecting
+              VoiceStatus.ACTIVE -> TalkState.Active
+              VoiceStatus.ERROR -> TalkState.Error
+              VoiceStatus.IDLE -> TalkState.Idle
+          },
+          onTalkClick = {
+              when (voiceStatus) {
+                  VoiceStatus.IDLE, VoiceStatus.ERROR -> {
+                      if (recordAudioGranted) {
+                          voiceSession.start()
+                      } else {
+                          recordAudioLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                      }
+                  }
+                  VoiceStatus.ACTIVE, VoiceStatus.CONNECTING -> voiceSession.stop()
+              }
+          },
           avatarUrl = userProfile.avatarUrl,
           displayName = userProfile.displayName,
           onAvatarClick = { showProfileSheet = true },
@@ -727,10 +665,6 @@ private fun HomeScreen(
             onDismiss = { showProfileSheet = false },
             onSignOut = onSignOut,
             onSyncProfile = onSyncProfile,
-            smsDataSharingGranted = smsDataSharingGranted,
-            onReviewDataSharing = onReviewDataSharing,
-            onSyncSmsNow = onSyncSmsNow,
-            onReviewLocationTracking = onReviewLocationTracking,
             onReviewPermissions = onReviewPermissions,
             permissionsAllSet = permissionsAllSet,
         )
@@ -755,5 +689,14 @@ private fun triggerImmediateSync(activity: ComponentActivity) {
         "sms_sync_now",
         ExistingWorkPolicy.KEEP,
         request,
+    )
+}
+
+private fun openAppSettings(activity: ComponentActivity) {
+    activity.startActivity(
+        android.content.Intent(
+            android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            android.net.Uri.fromParts("package", activity.packageName, null),
+        ),
     )
 }

@@ -1,16 +1,13 @@
 package `in`.voxagent.mobile.map
 
-import androidx.core.graphics.toColorInt
-import androidx.core.content.edit
 import android.Manifest
-import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.PackageManager
+import android.graphics.RectF
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
-import android.graphics.RectF
 import android.os.Looper
 import android.view.Choreographer
 import androidx.compose.foundation.background
@@ -24,11 +21,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import androidx.core.content.edit
+import androidx.core.graphics.toColorInt
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.google.gson.JsonObject
+import `in`.voxagent.mobile.map.scene.SceneRenderer
+import `in`.voxagent.mobile.map.scene.SceneSource
 import `in`.voxagent.mobile.ui.theme.VoidBlack
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import org.maplibre.android.MapLibre
@@ -69,9 +75,9 @@ private const val MAP_PITCH = 60.0
 private const val MAP_BEARING = -28.0
 private const val ORBIT_DEG_PER_SEC = 4.0
 private const val VIEW_PAD_DEG = 0.01
-private const val BUILDINGS_LAYER = "vox-3d-buildings"
-private const val HIGHLIGHT_SOURCE = "vox-highlight-source"
-private const val HIGHLIGHT_LAYER = "vox-highlight-layer"
+internal const val BUILDINGS_LAYER = "vox-3d-buildings"
+internal const val HIGHLIGHT_SOURCE = "vox-highlight-source"
+internal const val HIGHLIGHT_LAYER = "vox-highlight-layer"
 private const val YOU_SOURCE = "vox-you-source"
 private const val YOU_LAYER = "vox-you-layer"
 
@@ -82,10 +88,16 @@ private const val KEY_CACHED_BEARING = "cached_bearing"
 
 /** Ambient orbiting 3D map, ported from vox-desktop's use-mission-map.ts. */
 @Composable
-fun MissionMapBackground(modifier: Modifier = Modifier, locationPermissionGranted: Boolean) {
+fun MissionMapBackground(
+    modifier: Modifier = Modifier,
+    locationPermissionGranted: Boolean,
+    token: () -> String?,
+    callActive: Boolean = false,
+    voxSpeaking: Boolean = false,
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val controller = remember { MissionMapController(context).also { it.start() } }
+    val controller = remember { MissionMapController(context, token).also { it.start() } }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event -> controller.onLifecycle(event) }
@@ -100,6 +112,10 @@ fun MissionMapBackground(modifier: Modifier = Modifier, locationPermissionGrante
         controller.applyLocation(locationPermissionGranted)
     }
 
+    LaunchedEffect(controller, callActive, voxSpeaking) {
+        controller.setReaction(callActive, voxSpeaking)
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -112,7 +128,10 @@ fun MissionMapBackground(modifier: Modifier = Modifier, locationPermissionGrante
     }
 }
 
-private class MissionMapController(private val context: Context) {
+private class MissionMapController(
+    private val context: Context,
+    private val token: () -> String?,
+) {
     private val prefs = context.getSharedPreferences(PREFS_MAP_CACHE, Context.MODE_PRIVATE)
 
     init {
@@ -154,9 +173,17 @@ private class MissionMapController(private val context: Context) {
 
     private var homeCenter: LatLng? = LatLng(cachedLat, cachedLng)
     private var orbit: OrbitController? = null
+    private var sceneRenderer: SceneRenderer? = null
+    private var sceneActive = false
+    private val sceneSource = SceneSource(token)
+    private var sceneJob: Job? = null
+    @Volatile private var callActive = false
+    @Volatile private var voxSpeaking = false
+    private var mapRef: MapLibreMap? = null
 
     fun start() {
         mapView.getMapAsync { map ->
+            mapRef = map
             // Disable all UI overlays
             map.uiSettings.isCompassEnabled = false
             map.uiSettings.isLogoEnabled = false
@@ -186,9 +213,37 @@ private class MissionMapController(private val context: Context) {
                 add3dBuildings(style)
                 addHighlightLayer(style)
                 addYouLayer(style)
+
+                val renderer = SceneRenderer(
+                    map,
+                    mapView,
+                    onActiveChange = { active ->
+                        sceneActive = active
+                        if (active) {
+                            map.setLatLngBoundsForCameraTarget(null)
+                            map.setMinZoomPreference(10.0)
+                            map.setMaxZoomPreference(19.0)
+                        } else {
+                            homeCenter?.let { applyHome(map, it) }
+                        }
+                    },
+                    onCamera = { orbit?.pause(3_600_000) },
+                )
+                renderer.ensure(style)
+                sceneRenderer = renderer
+                homeCenter?.let { renderer.setHome(it) }
+                sceneJob = CoroutineScope(Dispatchers.Main).launch {
+                    sceneSource.scenes.collect { renderer.apply(it) }
+                }
+                sceneSource.start()
             }
 
-            val o = OrbitController(map) { homeCenter }
+            val o = OrbitController(
+                map,
+                { if (sceneActive) null else homeCenter },
+                { now -> paintReaction(now) },
+                { if (callActive) 0.35 else 1.0 },
+            )
             orbit = o
             o.start()
             mapDeferred.complete(map)
@@ -207,8 +262,61 @@ private class MissionMapController(private val context: Context) {
             putFloat(KEY_CACHED_BEARING, map.cameraPosition.bearing.toFloat())
         }
 
+        if (sceneActive) return
         orbit?.pause(2200)
         applyHome(map, loc)
+    }
+
+    fun setReaction(callActive: Boolean, voxSpeaking: Boolean) {
+        this.callActive = callActive
+        this.voxSpeaking = voxSpeaking
+    }
+
+    private fun paintReaction(nowMs: Long) {
+        val style = mapRef?.style ?: return
+        val you = style.getLayer(YOU_LAYER) as? CircleLayer
+        val pulse = if (voxSpeaking) ((nowMs % 900L) / 900f) else 0f
+        you?.setProperties(
+            PropertyFactory.circleRadius(if (callActive) 7f + 3f else 7f),
+            PropertyFactory.circleStrokeWidth(2f + pulse * 10f),
+            PropertyFactory.circleStrokeOpacity(1f - pulse),
+        )
+        (style.getLayer(HIGHLIGHT_LAYER) as? FillExtrusionLayer)?.setProperties(
+            PropertyFactory.fillExtrusionOpacity(
+                if (voxSpeaking) (0.85f + 0.15f * kotlin.math.sin(nowMs / 220f)) else 1f,
+            ),
+        )
+    }
+
+    fun applyHome(map: MapLibreMap, loc: LatLng) {
+        map.setLatLngBoundsForCameraTarget(
+            LatLngBounds.from(
+                loc.latitude + VIEW_PAD_DEG,
+                loc.longitude + VIEW_PAD_DEG,
+                loc.latitude - VIEW_PAD_DEG,
+                loc.longitude - VIEW_PAD_DEG,
+            ),
+        )
+        map.setMinZoomPreference(15.6)
+        map.setMaxZoomPreference(18.0)
+
+        (map.style?.getSource(YOU_SOURCE) as? GeoJsonSource)?.setGeoJson(
+            Feature.fromGeometry(Point.fromLngLat(loc.longitude, loc.latitude)),
+        )
+
+        map.easeCamera(
+            CameraUpdateFactory.newCameraPosition(
+                CameraPosition.Builder()
+                    .target(loc)
+                    .zoom(MAP_ZOOM)
+                    .tilt(MAP_PITCH)
+                    .bearing(map.cameraPosition.bearing)
+                    .build(),
+            ),
+            1800,
+        )
+
+        sceneRenderer?.setHome(loc)
     }
 
     fun onLifecycle(event: Lifecycle.Event) {
@@ -222,13 +330,21 @@ private class MissionMapController(private val context: Context) {
     }
 
     fun destroy() {
+        sceneJob?.cancel()
+        sceneSource.stop()
+        sceneRenderer?.destroy()
         orbit?.stop()
         mapView.onDestroy()
     }
 }
 
 /** Frame-synced bearing rotation around home */
-private class OrbitController(private val map: MapLibreMap, private val getCenter: () -> LatLng?) {
+private class OrbitController(
+    private val map: MapLibreMap,
+    private val getCenter: () -> LatLng?,
+    private val onFrame: (Long) -> Unit,
+    private val speedFactor: () -> Double,
+) {
     private var pausedUntilMs = 0L
     private var lastFrameNs = 0L
     private var speed = 0.0
@@ -237,11 +353,12 @@ private class OrbitController(private val map: MapLibreMap, private val getCente
     private val callback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
             if (!running) return
+            onFrame(System.currentTimeMillis())
             val last = if (lastFrameNs == 0L) frameTimeNanos else lastFrameNs
             val dt = min(0.05, (frameTimeNanos - last) / 1_000_000_000.0)
             lastFrameNs = frameTimeNanos
             val wantRun = System.currentTimeMillis() >= pausedUntilMs
-            speed += ((if (wantRun) 1.0 else 0.0) - speed) * min(1.0, dt * 0.8)
+            speed += ((if (wantRun) speedFactor() else 0.0) - speed) * min(1.0, dt * 0.8)
             val center = getCenter()
             if (center != null && speed > 0.001) {
                 val pos = map.cameraPosition
@@ -308,7 +425,7 @@ private fun findBuildingSource(style: Style): String? {
     }?.id ?: vectorSources.firstOrNull()?.id
 }
 
-private fun extrusionBeforeId(style: Style): String? {
+internal fun extrusionBeforeId(style: Style): String? {
     val layers = style.layers
     val lastLine = layers.indexOfLast { it is LineLayer }
     return layers.drop(lastLine + 1).firstOrNull { it is SymbolLayer }?.id
@@ -372,49 +489,13 @@ private fun addYouLayer(style: Style) {
     style.addLayer(layer)
 }
 
-private fun applyHome(map: MapLibreMap, loc: LatLng) {
-    map.setLatLngBoundsForCameraTarget(
-        LatLngBounds.from(
-            loc.latitude + VIEW_PAD_DEG,
-            loc.longitude + VIEW_PAD_DEG,
-            loc.latitude - VIEW_PAD_DEG,
-            loc.longitude - VIEW_PAD_DEG,
-        ),
-    )
-    map.setMinZoomPreference(15.6)
-    map.setMaxZoomPreference(18.0)
-
-    (map.style?.getSource(YOU_SOURCE) as? GeoJsonSource)?.setGeoJson(
-        Feature.fromGeometry(Point.fromLngLat(loc.longitude, loc.latitude)),
-    )
-
-    map.easeCamera(
-        CameraUpdateFactory.newCameraPosition(
-            CameraPosition.Builder()
-                .target(loc)
-                .zoom(MAP_ZOOM)
-                .tilt(MAP_PITCH)
-                .bearing(map.cameraPosition.bearing)
-                .build(),
-        ),
-        1800,
-    )
-
-    map.addOnCameraIdleListener(object : MapLibreMap.OnCameraIdleListener {
-        override fun onCameraIdle() {
-            map.removeOnCameraIdleListener(this)
-            highlightBuildingAt(map, loc)
-        }
-    })
-}
-
-private fun outerRings(geometry: Geometry?): List<List<Point>> = when (geometry) {
+internal fun outerRings(geometry: Geometry?): List<List<Point>> = when (geometry) {
     is Polygon -> listOf(geometry.coordinates()[0])
     is MultiPolygon -> geometry.coordinates().map { it[0] }
     else -> emptyList()
 }
 
-private fun pointInRing(x: Double, y: Double, ring: List<Point>): Boolean {
+internal fun pointInRing(x: Double, y: Double, ring: List<Point>): Boolean {
     var inside = false
     var j = ring.size - 1
     for (i in ring.indices) {
@@ -428,16 +509,12 @@ private fun pointInRing(x: Double, y: Double, ring: List<Point>): Boolean {
     return inside
 }
 
-// Highlights the home building in red, matching map-highlight.ts
-private fun highlightBuildingAt(map: MapLibreMap, loc: LatLng) {
-    val style = map.style ?: return
-    if (style.getLayer(BUILDINGS_LAYER) == null) return
-    val src = style.getSource(HIGHLIGHT_SOURCE) as? GeoJsonSource ?: return
-
+private fun footprintAt(map: MapLibreMap, loc: LatLng): Feature? {
+    val style = map.style ?: return null
+    if (style.getLayer(BUILDINGS_LAYER) == null) return null
     val point = map.projection.toScreenLocation(loc)
     val box = RectF(point.x - 80f, point.y - 80f, point.x + 80f, point.y + 80f)
     val hits = map.queryRenderedFeatures(box, BUILDINGS_LAYER)
-
     var bestRing: List<Point>? = null
     var bestProps: JsonObject? = null
     var best = Double.MAX_VALUE
@@ -455,13 +532,7 @@ private fun highlightBuildingAt(map: MapLibreMap, loc: LatLng) {
             }
         }
     }
-
-    val ring = bestRing
-    if (ring == null) {
-        src.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
-        return
-    }
-
+    val ring = bestRing ?: return null
     val props = bestProps ?: JsonObject()
     val h = (
         props.get("render_height")?.takeIf { !it.isJsonNull }?.asDouble
@@ -476,9 +547,12 @@ private fun highlightBuildingAt(map: MapLibreMap, loc: LatLng) {
         addProperty("render_height", h)
         addProperty("height", h)
     }
-    src.setGeoJson(
-        FeatureCollection.fromFeatures(listOf(Feature.fromGeometry(Polygon.fromLngLats(listOf(scaled)), outProps))),
-    )
+    return Feature.fromGeometry(Polygon.fromLngLats(listOf(scaled)), outProps)
+}
+
+internal fun setHighlights(map: MapLibreMap, points: List<LatLng>) {
+    val src = map.style?.getSource(HIGHLIGHT_SOURCE) as? GeoJsonSource ?: return
+    src.setGeoJson(FeatureCollection.fromFeatures(points.mapNotNull { footprintAt(map, it) }))
 }
 
 private val DEFAULT_LOCATION = LatLng(FALLBACK_LAT, FALLBACK_LNG)

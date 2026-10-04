@@ -7,14 +7,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
-import androidx.compose.ui.draw.BlurredEdgeTreatment
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
@@ -65,16 +64,26 @@ fun VoxAtmosphereBackground(
             // wash (not a hard-edged circle) so it reads as a blob, not a box.
             Box(
                 modifier = Modifier
-                    .size(560.dp)
-                    .offset((-180).dp, (-190).dp)
-                    .blur(48.dp, BlurredEdgeTreatment.Unbounded)
+                    .requiredSize(750.dp)
+                    .offset((-255).dp, (-285).dp)
+                    .graphicsLayer {
+                        scaleX = 1.5f
+                        scaleY = 0.8f
+                    }
                     .background(
                         brush = Brush.radialGradient(
                             colorStops = arrayOf(
-                                0f to CoralPulse.copy(alpha = 0.32f),
-                                0.32f to CoralPulse.copy(alpha = 0.14f),
-                                0.55f to CoralPulse.copy(alpha = 0.05f),
-                                0.76f to Color.Transparent,
+                                0.0f to CoralPulse.copy(alpha = 0.55f),
+                                0.1f to CoralPulse.copy(alpha = 0.526f),
+                                0.2f to CoralPulse.copy(alpha = 0.461f),
+                                0.3f to CoralPulse.copy(alpha = 0.373f),
+                                0.4f to CoralPulse.copy(alpha = 0.275f),
+                                0.5f to CoralPulse.copy(alpha = 0.181f),
+                                0.6f to CoralPulse.copy(alpha = 0.103f),
+                                0.7f to CoralPulse.copy(alpha = 0.047f),
+                                0.8f to CoralPulse.copy(alpha = 0.015f),
+                                0.9f to CoralPulse.copy(alpha = 0.002f),
+                                1.0f to CoralPulse.copy(alpha = 0.0f),
                             ),
                         ),
                     ),

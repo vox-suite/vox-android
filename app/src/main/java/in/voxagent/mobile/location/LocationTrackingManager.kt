@@ -71,4 +71,9 @@ object LocationTrackingManager {
                 .await()
         }
     }
+
+    suspend fun stopAndClear(context: Context) {
+        stop(context)
+        PendingSegmentStore(context).clearAll()
+    }
 }

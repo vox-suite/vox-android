@@ -17,6 +17,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebViewAssetLoader
 import `in`.voxagent.mobile.BuildConfig
@@ -107,13 +110,27 @@ fun VoxWebScreen(
                 builtInZoomControls = false
             }
             WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
-            addJavascriptInterface(VoxHostBridge(tokenProvider), "VoxHost")
+            addJavascriptInterface(VoxHostBridge(context, tokenProvider), "VoxHost")
             webViewClient = VoxWebViewClient(assetLoader, policy) { generation += 1 }
             loadUrl("$ENTRY_URL#/$route")
         }
     }
-    DisposableEffect(webView) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(webView, lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    webView.onResume()
+                    webView.evaluateJavascript("window.dispatchEvent(new Event('focus'))", null)
+                }
+                Lifecycle.Event.ON_PAUSE -> webView.onPause()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+
         onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
             webView.removeJavascriptInterface("VoxHost")
             webView.destroy()
         }

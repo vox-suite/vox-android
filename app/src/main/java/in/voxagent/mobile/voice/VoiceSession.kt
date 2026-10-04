@@ -54,6 +54,8 @@ class VoiceSession(private val context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val audioEngine = VoiceAudioEngine(context)
 
+    fun isVoxSpeaking(): Boolean = audioEngine.isPlaying()
+
     private var webSocket: WebSocket? = null
     private var pingTimer: Timer? = null
     private var currentTurnId: String? = null

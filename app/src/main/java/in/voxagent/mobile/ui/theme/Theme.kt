@@ -1,8 +1,11 @@
 package `in`.voxagent.mobile.ui.theme
 
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -30,37 +33,62 @@ private val VoxTypography = Typography().let { base ->
 }
 
 val VoxShapes = androidx.compose.material3.Shapes(
-    extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
-    small = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-    medium = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-    large = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-    extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+    extraSmall = RoundedCornerShape(6.dp),
+    small = RoundedCornerShape(100.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(9999.dp),
+    extraLarge = RoundedCornerShape(40.dp),
 )
 
-private val VoxColorScheme = darkColorScheme(
-    background = VoidBlack,
-    onBackground = PureWhite,
-    surface = Ink,
-    onSurface = PureWhite,
-    surfaceVariant = Obsidian,
-    onSurfaceVariant = Ash,
-    primary = Mist,
-    onPrimary = Iron,
-    secondary = Obsidian,
-    onSecondary = Mist,
-    tertiary = CoralPulse,
+val VoxLightColorScheme = lightColorScheme(
+    background = Parchment,
+    onBackground = OffBlack,
+    surface = Parchment,
+    onSurface = OffBlack,
+    surfaceVariant = PeriwinkleMist,
+    onSurfaceVariant = Graphite,
+    primary = LakeBlue,
+    onPrimary = PureWhite,
+    secondary = OffBlack,
+    onSecondary = Parchment,
+    tertiary = Coral,
     onTertiary = PureWhite,
-    error = EmberHush,
-    onError = CoralPulse,
-    outline = Slate,
-    outlineVariant = BorderSubtle,
+    error = Crimson,
+    onError = PureWhite,
+    outline = Ash,
+    outlineVariant = Ash.copy(alpha = 0.5f),
+    scrim = Color.Black,
+)
+
+val VoxDarkColorScheme = darkColorScheme(
+    background = ParchmentDark,
+    onBackground = OffBlackInverted,
+    surface = CardDark,
+    onSurface = OffBlackInverted,
+    surfaceVariant = PeriwinkleDark,
+    onSurfaceVariant = GraphiteDark,
+    primary = LakeBlueDark,
+    onPrimary = PureWhite,
+    secondary = OffBlackInverted,
+    onSecondary = ParchmentDark,
+    tertiary = Coral,
+    onTertiary = PureWhite,
+    error = Crimson,
+    onError = PureWhite,
+    outline = AshDark,
+    outlineVariant = AshDark.copy(alpha = 0.5f),
     scrim = Color.Black,
 )
 
 @Composable
-fun VoxTheme(content: @Composable () -> Unit) {
+fun VoxTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    content: @Composable () -> Unit
+) {
+    val colorScheme = if (darkTheme) VoxDarkColorScheme else VoxLightColorScheme
+
     MaterialTheme(
-        colorScheme = VoxColorScheme,
+        colorScheme = colorScheme,
         shapes = VoxShapes,
         typography = VoxTypography,
         content = content,

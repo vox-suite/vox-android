@@ -70,4 +70,12 @@ class PendingSegmentStore(context: Context) {
         val remaining = pendingSegments() - uploaded.toSet()
         prefs.edit { putString("pending_segments", json.encodeToString(remaining)) }
     }
+
+    fun clearAll() {
+        prefs.edit {
+            remove("pending_segments")
+            remove("open_activity")
+            remove("open_started_at")
+        }
+    }
 }

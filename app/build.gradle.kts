@@ -1,7 +1,4 @@
-import java.net.URI
-import java.security.MessageDigest
 import java.util.Properties
-import java.util.zip.ZipInputStream
 
 plugins {
     id("com.android.application")
@@ -16,69 +13,34 @@ val localProperties = Properties().apply {
     }
 }
 
-val voxUiVersion = providers.gradleProperty("voxUiVersion").get()
-val voxUiSha256 = providers.gradleProperty("voxUiSha256").get()
-val voxUiSiblingDir = rootProject.projectDir.resolve("../vox-ui")
-val voxUiMode = localProperties.getProperty("VOX_UI_MODE", "auto")
-val useLocalVoxUi = voxUiMode == "local" ||
-    (voxUiMode == "auto" && voxUiSiblingDir.resolve("package.json").exists())
-val voxUiGeneratedDir = layout.buildDirectory.dir("generated/voxui")
+val webUiDir = rootProject.projectDir.resolve("web-ui")
+val webUiGeneratedDir = layout.buildDirectory.dir("generated/webui")
 
-val syncVoxUi by tasks.registering {
-    val webDir = voxUiGeneratedDir.map { it.dir("web").asFile }
-    val marker = voxUiGeneratedDir.map { it.file("web.version").asFile }
-    val wantedMarker = "$voxUiVersion:$voxUiSha256"
-    inputs.property("voxUiMode", if (useLocalVoxUi) "local" else "release")
-    inputs.property("voxUiVersion", voxUiVersion)
-    outputs.dir(voxUiGeneratedDir)
-    outputs.upToDateWhen {
-        !useLocalVoxUi && marker.get().exists() && marker.get().readText() == wantedMarker
-    }
+val syncWebUi by tasks.registering {
+    inputs.files(fileTree(webUiDir) {
+        exclude("node_modules/**", "dist-webview/**", "release/**", "*.log")
+    })
+    outputs.dir(webUiGeneratedDir)
     doLast {
-        val target = webDir.get()
+        fun run(vararg command: String) {
+            val process = ProcessBuilder(*command)
+                .directory(webUiDir)
+                .inheritIO()
+                .start()
+            check(process.waitFor() == 0) { "${command.joinToString(" ")} failed in Android WebView sources" }
+        }
+        if (!webUiDir.resolve("node_modules").exists()) run("npm", "ci")
+        run("npm", "run", "build:webview")
+        val target = webUiGeneratedDir.get().dir("web").asFile
         target.deleteRecursively()
         target.mkdirs()
-        if (useLocalVoxUi) {
-            fun run(vararg command: String) {
-                val process = ProcessBuilder(*command)
-                    .directory(voxUiSiblingDir)
-                    .inheritIO()
-                    .start()
-                check(process.waitFor() == 0) { "${command.joinToString(" ")} failed in vox-ui" }
-            }
-            if (!voxUiSiblingDir.resolve("node_modules").exists()) run("npm", "ci")
-            run("npm", "run", "build:webview")
-            voxUiSiblingDir.resolve("dist-webview").copyRecursively(target, overwrite = true)
-            marker.get().delete()
-        } else {
-            val url = "https://github.com/vox-suite/vox-ui/releases/download/v$voxUiVersion/" +
-                "vox-ui-webview-$voxUiVersion.zip"
-            val archive = temporaryDir.resolve("vox-ui-webview.zip")
-            URI(url).toURL().openStream().use { input ->
-                archive.outputStream().use { input.copyTo(it) }
-            }
-            val digest = MessageDigest.getInstance("SHA-256")
-                .digest(archive.readBytes())
-                .joinToString("") { "%02x".format(it) }
-            check(digest == voxUiSha256) { "vox-ui bundle checksum mismatch: $digest" }
-            ZipInputStream(archive.inputStream()).use { zip ->
-                generateSequence { zip.nextEntry }.forEach { entry ->
-                    val out = target.resolve(entry.name).canonicalFile
-                    check(out.path.startsWith(target.canonicalPath)) { "unsafe zip entry" }
-                    if (entry.isDirectory) out.mkdirs() else {
-                        out.parentFile.mkdirs()
-                        out.outputStream().use { zip.copyTo(it) }
-                    }
-                }
-            }
-            marker.get().writeText(wantedMarker)
-        }
+        webUiDir.resolve("dist-webview").copyRecursively(target, overwrite = true)
     }
 }
 
 tasks.configureEach {
-    if (name != "syncVoxUi" && (name.contains("Assets") || name.contains("lint", ignoreCase = true))) {
-        dependsOn(syncVoxUi)
+    if (name != "syncWebUi" && (name.contains("Assets") || name.contains("lint", ignoreCase = true))) {
+        dependsOn(syncWebUi)
     }
 }
 
@@ -117,7 +79,7 @@ android {
     }
 
     sourceSets {
-        getByName("main").assets.directories.add(voxUiGeneratedDir.get().asFile.absolutePath)
+        getByName("main").assets.directories.add(webUiGeneratedDir.get().asFile.absolutePath)
     }
 
     lint {
