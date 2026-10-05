@@ -52,19 +52,4 @@ class SmsReader(private val context: Context) {
         return messages
     }
 
-    fun latestTimestampMillis(): Long {
-        val projection = arrayOf(Telephony.Sms.DATE)
-        context.contentResolver.query(
-            Telephony.Sms.CONTENT_URI,
-            projection,
-            null,
-            null,
-            "${Telephony.Sms.DATE} DESC LIMIT 1",
-        )?.use { cursor ->
-            if (cursor.moveToFirst()) {
-                return cursor.getLong(cursor.getColumnIndexOrThrow(Telephony.Sms.DATE))
-            }
-        }
-        return 0L
-    }
 }

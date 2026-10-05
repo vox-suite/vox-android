@@ -9,9 +9,15 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -42,15 +48,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -75,17 +75,12 @@ import `in`.voxagent.mobile.ui.theme.Obsidian
 import `in`.voxagent.mobile.ui.theme.PureWhite
 import `in`.voxagent.mobile.ui.theme.Smoke
 import `in`.voxagent.mobile.ui.theme.VoidBlack
-import `in`.voxagent.mobile.ui.theme.VoxRed
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import java.io.File
 
-enum class VoxNavTab {
-    Home,
-    Layers,
-    Span,
-}
+enum class Destination { Home, Timeline, Connections }
 
 enum class TalkState { Idle, Connecting, Active, Error }
 
@@ -102,11 +97,10 @@ fun VoxBottomNav(
     displayName: String?,
     onAvatarClick: () -> Unit,
     modifier: Modifier = Modifier,
-    selectedTab: VoxNavTab = VoxNavTab.Home,
-    onTabSelected: (VoxNavTab) -> Unit = {},
+    destination: Destination = Destination.Home,
+    onDestination: (Destination) -> Unit = {},
     talkState: TalkState = TalkState.Idle,
     onTalkClick: () -> Unit = {},
-    onLogoClick: (() -> Unit)? = null,
     hazeState: HazeState? = null,
 ) {
     val containerSurfaceModifier = if (hazeState != null) {
@@ -145,31 +139,28 @@ fun VoxBottomNav(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                NavPillButton(
-                    selected = selectedTab == VoxNavTab.Home,
-                    contentDescription = "Home Map",
-                    onClick = {
-                        if (onLogoClick != null) onLogoClick() else onTabSelected(VoxNavTab.Home)
-                    },
+                NavDestinationButton(
+                    selected = destination == Destination.Home,
+                    description = "Home",
+                    onClick = { onDestination(Destination.Home) },
                 ) { tint ->
-                    VoxLogo(
-                        size = 24.dp,
-                        color = tint,
-                        animated = true,
-                        modifier = Modifier.aspectRatio(1f),
-                    )
+                    VoxLogo(size = 24.dp, color = tint, animated = true, modifier = Modifier.aspectRatio(1f))
                 }
-
-                NavPillButton(
-                    selected = selectedTab == VoxNavTab.Span,
-                    contentDescription = "Span",
-                    onClick = { onTabSelected(VoxNavTab.Span) },
+                NavDestinationButton(
+                    selected = destination == Destination.Timeline,
+                    description = "Timeline",
+                    onClick = { onDestination(Destination.Timeline) },
+                ) { tint -> CalendarIcon(tint = tint, modifier = Modifier.size(22.dp)) }
+                NavDestinationButton(
+                    selected = destination == Destination.Connections,
+                    description = "Connected Apps",
+                    onClick = { onDestination(Destination.Connections) },
                 ) { tint ->
-                    SpanIcon(
+                    Icon(
+                        painter = painterResource(R.drawable.ic_plug),
+                        contentDescription = null,
                         tint = tint,
-                        modifier = Modifier
-                            .size(24.dp)
-                            .aspectRatio(1f),
+                        modifier = Modifier.size(20.dp),
                     )
                 }
             }
@@ -286,114 +277,6 @@ fun VoxBottomNav(
 }
 
 /**
- * Microphone icon vector drawn with Compose Canvas.
- */
-@Composable
-fun MicIcon(
-    modifier: Modifier = Modifier,
-    tint: Color = PureWhite,
-) {
-    Icon(
-        painter = painterResource(R.drawable.ic_mic),
-        contentDescription = null,
-        tint = tint,
-        modifier = modifier.aspectRatio(1f),
-    )
-}
-
-@Suppress("unused")
-@Composable
-private fun NavPillButton(
-    selected: Boolean,
-    contentDescription: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    icon: @Composable (Color) -> Unit,
-) {
-    val tintColor = if (selected) PureWhite else PureWhite.copy(alpha = 0.38f)
-
-    Box(
-        modifier = modifier
-            .size(40.dp)
-            .clip(CircleShape)
-            .semantics { this.contentDescription = contentDescription }
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        icon(tintColor)
-    }
-}
-
-/**
- * Isometric 3-layer stacked sheets icon matching the reference screenshot.
- */
-@Suppress("unused")
-@Composable
-fun LayersIcon(tint: Color, modifier: Modifier = Modifier) {
-    Icon(
-        painter = painterResource(R.drawable.ic_stack),
-        contentDescription = "Layers",
-        tint = tint,
-        modifier = modifier.aspectRatio(1f),
-    )
-}
-
-/**
- * Geometric shapes icon (circle, cross, triangle, square) matching Tabler ti-icons.
- */
-@Suppress("unused")
-@Composable
-fun AgentIcon(tint: Color, modifier: Modifier = Modifier) {
-    Icon(
-        painter = painterResource(R.drawable.ic_shapes),
-        contentDescription = "Agent Cockpit",
-        tint = tint,
-        modifier = modifier.aspectRatio(1f),
-    )
-}
-
-/**
- * Gantt-chart timeline icon — mirrors the GanttChart lucide icon used on desktop
- * for the Span tab. Drawn as three staggered horizontal bars of varying width.
- */
-@Composable
-fun SpanIcon(tint: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val strokeW = w * 0.10f
-        val radius = strokeW / 2f
-        val barH = strokeW
-
-        // Row 1: full bar from 0.1 to 0.9
-        drawRoundRect(
-            color = tint,
-            topLeft = Offset(w * 0.10f, h * 0.20f - barH / 2),
-            size = androidx.compose.ui.geometry.Size(w * 0.80f, barH),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius),
-        )
-        // Row 2: shorter bar from 0.1 to 0.55
-        drawRoundRect(
-            color = tint,
-            topLeft = Offset(w * 0.10f, h * 0.50f - barH / 2),
-            size = androidx.compose.ui.geometry.Size(w * 0.45f, barH),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius),
-        )
-        // Row 3: bar shifted right from 0.35 to 0.90
-        drawRoundRect(
-            color = tint,
-            topLeft = Offset(w * 0.35f, h * 0.80f - barH / 2),
-            size = androidx.compose.ui.geometry.Size(w * 0.55f, barH),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius),
-        )
-    }
-}
-
-/**
  * Asynchronously loads and caches the user's avatar from Google Sign-In,
  * falling back gracefully to a stylized initial letter when offline or unavailable.
  */
@@ -498,6 +381,7 @@ fun VoxProfileSheet(
     onSyncProfile: (() -> Unit)? = null,
     onReviewPermissions: (() -> Unit)? = null,
     permissionsAllSet: Boolean = false,
+    onOpenConnections: (() -> Unit)? = null,
 ) {
     AnimatedVisibility(
         visible = visible,
@@ -576,18 +460,30 @@ fun VoxProfileSheet(
                         }
                     }
 
-                    if (onReviewPermissions != null) {
+                    if (onOpenConnections != null || onReviewPermissions != null) {
                         VoxSettingsGroup {
-                            VoxSettingsRow(
-                                label = "Permissions",
-                                trailingText = if (permissionsAllSet) "all set" else "Review",
-                                trailingTone = if (permissionsAllSet) VoxStatusTone.Success else VoxStatusTone.Neutral,
-                                showDivider = false,
-                                onClick = {
-                                    onDismiss()
-                                    onReviewPermissions()
-                                },
-                            )
+                            if (onOpenConnections != null) {
+                                VoxSettingsRow(
+                                    label = "Connected Apps",
+                                    showDivider = onReviewPermissions != null,
+                                    onClick = {
+                                        onDismiss()
+                                        onOpenConnections()
+                                    },
+                                )
+                            }
+                            if (onReviewPermissions != null) {
+                                VoxSettingsRow(
+                                    label = "Permissions",
+                                    trailingText = if (permissionsAllSet) "all set" else "Review",
+                                    trailingTone = if (permissionsAllSet) VoxStatusTone.Success else VoxStatusTone.Neutral,
+                                    showDivider = false,
+                                    onClick = {
+                                        onDismiss()
+                                        onReviewPermissions()
+                                    },
+                                )
+                            }
                         }
                     }
 
@@ -620,5 +516,36 @@ fun VoxProfileSheet(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun NavDestinationButton(
+    selected: Boolean,
+    description: String,
+    onClick: () -> Unit,
+    content: @Composable (Color) -> Unit,
+) {
+    val tint = if (selected) PureWhite else PureWhite.copy(alpha = 0.38f)
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .semantics { contentDescription = description }
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { content(tint) }
+}
+
+@Composable
+fun CalendarIcon(tint: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        val w = size.width
+        val h = size.height
+        val stroke = Stroke(width = w * 0.09f, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        drawRoundRect(tint, topLeft = Offset(w * 0.1f, h * 0.18f), size = Size(w * 0.8f, h * 0.72f), cornerRadius = CornerRadius(w * 0.14f), style = stroke)
+        drawLine(tint, Offset(w * 0.1f, h * 0.42f), Offset(w * 0.9f, h * 0.42f), strokeWidth = w * 0.09f, cap = StrokeCap.Round)
+        drawLine(tint, Offset(w * 0.32f, h * 0.06f), Offset(w * 0.32f, h * 0.28f), strokeWidth = w * 0.09f, cap = StrokeCap.Round)
+        drawLine(tint, Offset(w * 0.68f, h * 0.06f), Offset(w * 0.68f, h * 0.28f), strokeWidth = w * 0.09f, cap = StrokeCap.Round)
     }
 }

@@ -2,7 +2,6 @@ package `in`.voxagent.mobile.ui
 
 import `in`.voxagent.mobile.net.VoxHttpException
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,28 +33,13 @@ import `in`.voxagent.mobile.phone.normalizePhone
 import `in`.voxagent.mobile.phone.phoneErrorMessage
 import `in`.voxagent.mobile.ui.theme.CoralPulse
 import `in`.voxagent.mobile.ui.theme.GraphiteDark
-import `in`.voxagent.mobile.ui.theme.Iron
 import `in`.voxagent.mobile.ui.theme.Mist
-import `in`.voxagent.mobile.ui.theme.SmokeDark
 import `in`.voxagent.mobile.ui.theme.VoxFunnelDisplayFontFamily
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val CODE_LENGTH = 6
 private const val RESEND_SECONDS = 30
-
-@Composable
-private fun darkFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedTextColor = Mist,
-    unfocusedTextColor = Mist,
-    disabledTextColor = SmokeDark,
-    focusedBorderColor = Mist,
-    unfocusedBorderColor = Iron,
-    disabledBorderColor = Iron,
-    cursorColor = Mist,
-    focusedPlaceholderColor = SmokeDark,
-    unfocusedPlaceholderColor = SmokeDark,
-)
 
 @Composable
 fun PhoneVerificationFlow(
@@ -182,7 +165,7 @@ fun PhoneVerificationFlow(
                     enabled = !busy,
                     placeholder = { Text("+1 555 000 1234") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                    colors = darkFieldColors(),
+                    colors = voxFieldColors(),
                 )
                 VoxPrimaryButton(
                     text = if (busy) "Saving…" else "Continue",
@@ -204,7 +187,7 @@ fun PhoneVerificationFlow(
                     enabled = !busy,
                     placeholder = { Text("123456") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    colors = darkFieldColors(),
+                    colors = voxFieldColors(),
                 )
                 VoxPrimaryButton(
                     text = if (busy) "Verifying…" else "Verify",

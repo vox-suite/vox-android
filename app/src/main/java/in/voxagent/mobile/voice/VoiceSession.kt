@@ -6,7 +6,6 @@ import `in`.voxagent.mobile.auth.AuthManager
 import `in`.voxagent.mobile.logging.RemoteLog
 import `in`.voxagent.mobile.net.VoxHttp
 import android.content.Context
-import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

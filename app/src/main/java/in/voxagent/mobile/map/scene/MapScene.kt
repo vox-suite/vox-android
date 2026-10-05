@@ -10,7 +10,6 @@ data class MapScene(
     val arcs: List<SceneArc> = emptyList(),
     val columns: List<SceneColumn> = emptyList(),
     val highlights: List<SceneHighlight> = emptyList(),
-    val narrationHint: String? = null,
 ) {
     val isActive get() = camera != null || pins.isNotEmpty() || arcs.isNotEmpty() ||
         columns.isNotEmpty() || highlights.isNotEmpty()
@@ -34,7 +33,6 @@ data class ScenePin(
     val label: String? = null,
     val kind: String,
     val state: String? = null,
-    val spanId: String? = null,
 )
 
 @Serializable

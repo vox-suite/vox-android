@@ -1,6 +1,0 @@
-node_modules
-dist
-dist-webview
-release
-.DS_Store
-*.log

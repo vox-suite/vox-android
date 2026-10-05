@@ -1,23 +1,15 @@
 package `in`.voxagent.mobile
 
-import androidx.core.graphics.toColorInt
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
-import android.util.Log
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,8 +20,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
@@ -70,7 +60,6 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import android.os.Build
-import `in`.voxagent.mobile.BuildConfig
 import `in`.voxagent.mobile.R
 import `in`.voxagent.mobile.auth.AuthError
 import `in`.voxagent.mobile.auth.AuthManager
@@ -89,13 +78,17 @@ import `in`.voxagent.mobile.ui.PermissionsScreen
 import `in`.voxagent.mobile.ui.PhoneVerificationFlow
 import `in`.voxagent.mobile.ui.VoxAtmosphereBackground
 import `in`.voxagent.mobile.ui.TalkState
+import androidx.compose.runtime.mutableIntStateOf
+import `in`.voxagent.mobile.ui.Destination
+import `in`.voxagent.mobile.spans.SpanCollection
+import `in`.voxagent.mobile.connections.ConnectionsScreen
+import `in`.voxagent.mobile.timeline.SpanSheet
+import `in`.voxagent.mobile.timeline.SheetTarget
+import `in`.voxagent.mobile.timeline.TimelineScreen
 import `in`.voxagent.mobile.ui.VoxBottomNav
 import `in`.voxagent.mobile.ui.VoxLogo
-import `in`.voxagent.mobile.ui.VoxNavTab
 import `in`.voxagent.mobile.ui.VoxPrimaryButton
 import `in`.voxagent.mobile.ui.VoxProfileSheet
-import `in`.voxagent.mobile.ui.VoxWordmark
-import `in`.voxagent.mobile.web.VoxWebScreen
 import `in`.voxagent.mobile.ui.theme.GraphiteDark
 import `in`.voxagent.mobile.ui.theme.Mist
 import `in`.voxagent.mobile.ui.theme.CoralPulse
@@ -529,8 +522,11 @@ private fun HomeScreen(
     onReviewPermissions: (() -> Unit)? = null,
     permissionsAllSet: Boolean = false,
 ) {
-    var selectedTab by remember { mutableStateOf(VoxNavTab.Home) }
     val latestToken by rememberUpdatedState(token)
+    var destination by remember { mutableStateOf(Destination.Home) }
+    var sheet by remember { mutableStateOf<SheetTarget?>(null) }
+    var timelineReload by remember { mutableIntStateOf(0) }
+    var timelineCollections by remember { mutableStateOf<List<SpanCollection>>(emptyList()) }
     var showProfileSheet by remember { mutableStateOf(false) }
     val hazeState = remember { HazeState() }
 
@@ -587,49 +583,37 @@ private fun HomeScreen(
 
       }
 
-      // Span Timeline Tab — full-screen overlay, drawn ABOVE the map but BELOW the nav bar
-      AnimatedVisibility(
-          visible = selectedTab == VoxNavTab.Span,
-          enter = fadeIn() + slideInVertically(initialOffsetY = { it / 4 }),
-          exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 4 }),
-          modifier = Modifier.fillMaxSize(),
-      ) {
-          if (token != null) {
-              VoxWebScreen(
-                  route = "timeline",
-                  tokenProvider = { latestToken },
-                  modifier = Modifier
-                      .fillMaxSize()
-                      .statusBarsPadding()
-                      .navigationBarsPadding()
-                      .padding(bottom = 80.dp),
+      if (destination == Destination.Timeline && token != null) {
+          TimelineScreen(
+              token = { latestToken },
+              bottomInset = 88.dp,
+              onOpenSpan = { sheet = SheetTarget.Edit(it) },
+              onNewSpan = { sheet = SheetTarget.New(it) },
+              reloadSignal = timelineReload,
+              onCollections = { timelineCollections = it },
+          )
+          sheet?.let { target ->
+              SpanSheet(
+                  target = target,
+                  collections = timelineCollections,
+                  token = { latestToken },
+                  onClose = { sheet = null },
+                  onSaved = { timelineReload += 1 },
               )
           }
       }
 
-      AnimatedVisibility(
-          visible = selectedTab == VoxNavTab.Layers,
-          enter = fadeIn() + slideInVertically(initialOffsetY = { it / 4 }),
-          exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 4 }),
-          modifier = Modifier.fillMaxSize(),
-      ) {
-          if (token != null) {
-              VoxWebScreen(
-                  route = "pulse",
-                  tokenProvider = { latestToken },
-                  modifier = Modifier
-                      .fillMaxSize()
-                      .statusBarsPadding()
-                      .navigationBarsPadding()
-                      .padding(bottom = 80.dp),
-              )
-          }
+      if (destination == Destination.Connections && token != null) {
+          ConnectionsScreen(
+              token = { latestToken },
+              bottomInset = 88.dp,
+              onBack = { destination = Destination.Home },
+          )
       }
 
-      // Floating Bottom Navigation Menu (Unified Translucent Container)
       VoxBottomNav(
-          selectedTab = selectedTab,
-          onTabSelected = { selectedTab = it },
+          destination = destination,
+          onDestination = { destination = it },
           talkState = when (voiceStatus) {
               VoiceStatus.CONNECTING -> TalkState.Connecting
               VoiceStatus.ACTIVE -> TalkState.Active
@@ -667,6 +651,7 @@ private fun HomeScreen(
             onSyncProfile = onSyncProfile,
             onReviewPermissions = onReviewPermissions,
             permissionsAllSet = permissionsAllSet,
+            onOpenConnections = { destination = Destination.Connections },
         )
     }
 }

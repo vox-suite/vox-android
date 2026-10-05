@@ -29,6 +29,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.google.gson.JsonObject
 import `in`.voxagent.mobile.map.scene.SceneRenderer
 import `in`.voxagent.mobile.map.scene.SceneSource
+import `in`.voxagent.mobile.net.LiveHub
 import `in`.voxagent.mobile.ui.theme.VoidBlack
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -175,7 +176,7 @@ private class MissionMapController(
     private var orbit: OrbitController? = null
     private var sceneRenderer: SceneRenderer? = null
     private var sceneActive = false
-    private val sceneSource = SceneSource(token)
+    private val sceneSource = SceneSource(token, LiveHub.get(token))
     private var sceneJob: Job? = null
     @Volatile private var callActive = false
     @Volatile private var voxSpeaking = false

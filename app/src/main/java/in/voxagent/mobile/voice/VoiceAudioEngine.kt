@@ -14,7 +14,6 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
-import android.util.Log
 import `in`.voxagent.mobile.logging.RemoteLog
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit

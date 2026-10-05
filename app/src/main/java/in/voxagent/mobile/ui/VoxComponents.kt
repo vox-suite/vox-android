@@ -19,13 +19,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import `in`.voxagent.mobile.ui.theme.SmokeDark
+import `in`.voxagent.mobile.ui.theme.Iron
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
@@ -35,8 +36,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
@@ -46,34 +45,8 @@ import `in`.voxagent.mobile.ui.theme.CoralPulse
 import `in`.voxagent.mobile.ui.theme.EmberHush
 import `in`.voxagent.mobile.ui.theme.Ink
 import `in`.voxagent.mobile.ui.theme.Mist
-import `in`.voxagent.mobile.ui.theme.Slate
 import `in`.voxagent.mobile.ui.theme.Smoke
 import `in`.voxagent.mobile.ui.theme.SuccessGreen
-
-@Composable
-fun VoxWordmark(
-    modifier: Modifier = Modifier,
-    logoSize: Dp = 24.dp,
-) {
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        VoxLogo(
-            size = logoSize,
-            color = MaterialTheme.colorScheme.onBackground,
-        )
-        Text(
-            text = "VOX",
-            modifier = Modifier.padding(start = 8.dp),
-            color = MaterialTheme.colorScheme.onBackground,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 15.sp,
-            letterSpacing = 2.sp,
-        )
-    }
-}
 
 enum class VoxStatusTone { Success, Neutral, Warning, Danger }
 
@@ -104,29 +77,6 @@ fun VoxStatusPill(text: String, tone: VoxStatusTone) {
 }
 
 @Composable
-fun VoxStatusRow(label: String, statusText: String, tone: VoxStatusTone) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(Ink)
-            .border(BorderStroke(1.dp, Slate), RoundedCornerShape(12.dp))
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontFamily = FontFamily.Monospace,
-            fontSize = 12.sp,
-            letterSpacing = 1.sp,
-        )
-        VoxStatusPill(statusText, tone)
-    }
-}
-
-@Composable
 fun VoxPrimaryButton(
     text: String,
     modifier: Modifier = Modifier,
@@ -148,22 +98,6 @@ fun VoxPrimaryButton(
             Spacer(modifier = Modifier.size(10.dp))
         }
         Text(text, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-@Composable
-fun VoxSecondaryButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    OutlinedButton(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(50),
-        border = BorderStroke(1.dp, Slate),
-        colors = ButtonDefaults.outlinedButtonColors(
-            contentColor = MaterialTheme.colorScheme.onBackground,
-        ),
-        contentPadding = PaddingValues(vertical = 14.dp),
-    ) {
-        Text(text, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -253,18 +187,6 @@ fun VoxSettingsRow(
 }
 
 @Composable
-fun VoxSectionLabel(text: String) {
-    Text(
-        text = text.uppercase(),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        fontFamily = FontFamily.Monospace,
-        fontSize = 11.sp,
-        letterSpacing = 1.5.sp,
-        textAlign = TextAlign.Start,
-    )
-}
-
-@Composable
 fun VoxDarkScreen(content: @Composable BoxScope.() -> Unit) {
     val view = LocalView.current
     DisposableEffect(view) {
@@ -277,3 +199,16 @@ fun VoxDarkScreen(content: @Composable BoxScope.() -> Unit) {
     }
     Box(modifier = Modifier.fillMaxSize().background(VoidBlack), content = content)
 }
+
+@Composable
+fun voxFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = Mist,
+    unfocusedTextColor = Mist,
+    disabledTextColor = SmokeDark,
+    focusedBorderColor = Mist,
+    unfocusedBorderColor = Iron,
+    disabledBorderColor = Iron,
+    cursorColor = Mist,
+    focusedPlaceholderColor = SmokeDark,
+    unfocusedPlaceholderColor = SmokeDark,
+)

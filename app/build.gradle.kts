@@ -13,37 +13,6 @@ val localProperties = Properties().apply {
     }
 }
 
-val webUiDir = rootProject.projectDir.resolve("web-ui")
-val webUiGeneratedDir = layout.buildDirectory.dir("generated/webui")
-
-val syncWebUi by tasks.registering {
-    inputs.files(fileTree(webUiDir) {
-        exclude("node_modules/**", "dist-webview/**", "release/**", "*.log")
-    })
-    outputs.dir(webUiGeneratedDir)
-    doLast {
-        fun run(vararg command: String) {
-            val process = ProcessBuilder(*command)
-                .directory(webUiDir)
-                .inheritIO()
-                .start()
-            check(process.waitFor() == 0) { "${command.joinToString(" ")} failed in Android WebView sources" }
-        }
-        if (!webUiDir.resolve("node_modules").exists()) run("npm", "ci")
-        run("npm", "run", "build:webview")
-        val target = webUiGeneratedDir.get().dir("web").asFile
-        target.deleteRecursively()
-        target.mkdirs()
-        webUiDir.resolve("dist-webview").copyRecursively(target, overwrite = true)
-    }
-}
-
-tasks.configureEach {
-    if (name != "syncWebUi" && (name.contains("Assets") || name.contains("lint", ignoreCase = true))) {
-        dependsOn(syncWebUi)
-    }
-}
-
 android {
     namespace = "in.voxagent.mobile"
     compileSdk = 37
@@ -78,10 +47,6 @@ android {
         }
     }
 
-    sourceSets {
-        getByName("main").assets.directories.add(webUiGeneratedDir.get().asFile.absolutePath)
-    }
-
     lint {
         disable += listOf("NewerVersionAvailable", "AndroidGradlePluginVersion")
     }
@@ -100,6 +65,7 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.ui:ui")
@@ -107,9 +73,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
 
-    implementation("androidx.webkit:webkit:1.17.1")
     implementation("com.jakewharton.timber:timber:5.0.1")
     implementation("androidx.work:work-runtime-ktx:2.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
