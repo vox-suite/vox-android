@@ -6,6 +6,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -116,8 +118,11 @@ class ConnectionsViewModel(
         viewModelScope.launch {
             _ui.update { it.copy(loading = it.connectors.isEmpty(), error = null) }
             try {
-                val connectors = ConnectionsApi.listConnectors(token)
-                val connections = ConnectionsApi.listConnections(token)
+                val (connectors, connections) = coroutineScope {
+                    val c = async { ConnectionsApi.listConnectors(token) }
+                    val n = async { ConnectionsApi.listConnections(token) }
+                    c.await() to n.await()
+                }
                 _ui.update {
                     it.copy(
                         connectors = connectors,
