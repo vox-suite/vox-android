@@ -57,7 +57,6 @@ fun TimelineScreen(
     token: () -> String?,
     bottomInset: Dp,
     onOpenSpan: (Span) -> Unit,
-    onNewSpan: (LocalDate) -> Unit,
     reloadSignal: Int,
     onCollections: (List<SpanCollection>) -> Unit,
 ) {
@@ -91,16 +90,6 @@ fun TimelineScreen(
                     ViewMode.Week -> WeekAgenda(ui.days, ui.selectedDay, ui.spans, vm::selectDay, onOpenSpan, vm::previous, vm::next)
                     ViewMode.Month -> MonthGrid(ui.anchor, ui.spans, vm::openDay)
                 }
-                Box(
-                    Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(16.dp)
-                        .size(52.dp)
-                        .clip(CircleShape)
-                        .background(Mist)
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onNewSpan(ui.selectedDay) },
-                    contentAlignment = Alignment.Center,
-                ) { Text("+", color = Obsidian, fontSize = 26.sp, fontWeight = FontWeight.Light) }
             }
         }
     }

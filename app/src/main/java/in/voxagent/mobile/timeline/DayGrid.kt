@@ -4,7 +4,10 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -34,9 +38,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
@@ -44,18 +50,27 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Popup
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import `in`.voxagent.mobile.spans.PlacedSpan
 import `in`.voxagent.mobile.spans.Span
 import `in`.voxagent.mobile.spans.SpanStatus
-import `in`.voxagent.mobile.spans.categoryStyle
+import `in`.voxagent.mobile.spans.displayTitle
+import `in`.voxagent.mobile.spans.isEstimated
+import `in`.voxagent.mobile.spans.spanCover
+import `in`.voxagent.mobile.spans.spanStyle
+import `in`.voxagent.mobile.spans.spanSubtitle
 import `in`.voxagent.mobile.spans.formatAmount
 import `in`.voxagent.mobile.spans.formatTime
 import `in`.voxagent.mobile.spans.layoutAllDay
 import `in`.voxagent.mobile.spans.layoutDay
 import `in`.voxagent.mobile.spans.zone
 import `in`.voxagent.mobile.ui.kit.CategoryIndicator
+import `in`.voxagent.mobile.ui.kit.RemoteImage
+import androidx.compose.foundation.rememberScrollState as rememberHScroll
 import `in`.voxagent.mobile.ui.theme.BorderSubtle
 import `in`.voxagent.mobile.ui.theme.CoralPulse
 import `in`.voxagent.mobile.ui.theme.Mist
@@ -68,8 +83,10 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-private val HOUR_DP = 56.dp
-private const val PX_PER_MIN = 56.0 / 60.0
+private val HOUR_DP = 128.dp
+private val QUARTER_DP = 32.dp
+private val CHIP_DP = 28.dp
+private const val PX_PER_MIN = 128.0 / 60.0
 private const val INDENT_DP = 10
 private val GUTTER = 54.dp
 private val hourLabel = DateTimeFormatter.ofPattern("h a", Locale.getDefault())
@@ -103,9 +120,9 @@ fun DayGrid(day: LocalDate, spans: List<Span>, onSelect: (Span) -> Unit, modifie
         if (allDayRows > 0) {
             Box(Modifier.fillMaxWidth().height((allDayRows * 24 + 6).dp)) {
                 allDay.forEach { row ->
-                    val style = categoryStyle(row.span.category, row.span.schemaColorToken)
+                    val style = spanStyle(row.span)
                     Text(
-                        row.span.title,
+                        displayTitle(row.span),
                         color = Mist,
                         fontSize = 11.sp,
                         maxLines = 1,
@@ -132,14 +149,25 @@ fun DayGrid(day: LocalDate, spans: List<Span>, onSelect: (Span) -> Unit, modifie
         }
         Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)) {
             Box(Modifier.fillMaxWidth().height(HOUR_DP * 24)) {
-                for (h in 1..23) {
-                    Text(
-                        hourLabel.format(LocalDateTime.of(2000, 1, 1, h, 0)).lowercase(),
-                        color = SmokeDark,
-                        fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.offset(x = 4.dp, y = HOUR_DP * h - 7.dp).width(GUTTER - 10.dp),
-                    )
+                for (h in 0..23) {
+                    if (h > 0) {
+                        Text(
+                            hourLabel.format(LocalDateTime.of(2000, 1, 1, h, 0)).lowercase(),
+                            color = SmokeDark,
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.offset(x = 4.dp, y = HOUR_DP * h - 7.dp).width(GUTTER - 10.dp),
+                        )
+                    }
+                    for (q in 1..3) {
+                        Text(
+                            ":${q * 15}",
+                            color = SmokeDark.copy(alpha = 0.55f),
+                            fontSize = 8.5.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.offset(x = 4.dp, y = HOUR_DP * h + QUARTER_DP * q - 6.dp).width(GUTTER - 10.dp),
+                        )
+                    }
                 }
                 BoxWithConstraints(
                     Modifier
@@ -147,16 +175,24 @@ fun DayGrid(day: LocalDate, spans: List<Span>, onSelect: (Span) -> Unit, modifie
                         .fillMaxSize()
                         .drawBehind {
                             val step = HOUR_DP.toPx()
+                            val quarter = QUARTER_DP.toPx()
                             for (h in 0..23) {
-                                drawLine(Color.White.copy(alpha = 0.06f), Offset(0f, h * step), Offset(size.width, h * step), 1f)
+                                drawLine(Color.White.copy(alpha = 0.09f), Offset(0f, h * step), Offset(size.width, h * step), 1f)
+                                for (q in 1..3) {
+                                    drawLine(Color.White.copy(alpha = 0.035f), Offset(0f, h * step + q * quarter), Offset(size.width, h * step + q * quarter), 1f)
+                                }
                             }
                             drawLine(BorderSubtle, Offset(0f, 0f), Offset(0f, size.height), 1f)
                         },
                 ) {
                     val colWidth = maxWidth
-                    placed.forEach { p ->
+                    placed.filter { !it.instant }.forEach { p ->
                         SpanBlock(p, p.span.id in parents, colWidth, onSelect)
                     }
+                    placed.filter { it.instant }
+                        .groupBy { listOf(it.depth, it.left, it.width, it.slot) }
+                        .values
+                        .forEach { items -> InstantRow(items, colWidth, onSelect) }
                     if (day == now.toLocalDate()) {
                         val top = ((now.hour * 60 + now.minute) * PX_PER_MIN).dp
                         Canvas(Modifier.fillMaxWidth().height(1.dp).offset(y = top)) {
@@ -175,41 +211,60 @@ fun DayGrid(day: LocalDate, spans: List<Span>, onSelect: (Span) -> Unit, modifie
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SpanBlock(placed: PlacedSpan, hasChildren: Boolean, colWidth: Dp, onSelect: (Span) -> Unit) {
-    val span = placed.span
-    val style = categoryStyle(span.category, span.schemaColorToken)
-    val inset = placed.depth * INDENT_DP + 3
-    val heightDp = maxOf(placed.height * PX_PER_MIN - 2, 22.0).dp
-    val showTime = !placed.instant && heightDp >= 48.dp
+private fun InstantRow(items: List<PlacedSpan>, colWidth: Dp, onSelect: (Span) -> Unit) {
+    val first = items.first()
+    val inset = first.depth * INDENT_DP + 3
+    Row(
+        Modifier
+            .offset(x = colWidth * first.left.toFloat() + inset.dp, y = QUARTER_DP * (first.slot ?: 0))
+            .width(colWidth * first.width.toFloat() - (inset + 3).dp)
+            .height(QUARTER_DP)
+            .horizontalScroll(rememberHScroll()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        items.forEach { InstantChip(it.span, onSelect) }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun InstantChip(span: Span, onSelect: (Span) -> Unit) {
+    val style = spanStyle(span)
+    val iconOnly = span.source == "spotify" || span.source == "youtube"
+    val cover = spanCover(span)
     val amount = formatAmount(span)
     val muted = span.status == SpanStatus.Cancelled
-    val border = when (span.status) {
-        SpanStatus.Active -> BorderStroke(1.dp, Color.White.copy(alpha = 0.45f))
-        SpanStatus.Failed -> BorderStroke(1.dp, CoralPulse)
-        else -> BorderStroke(1.dp, style.border)
-    }
-    val bg = if (hasChildren) lerp(Color(0xFF111215), style.bg, 0.6f) else style.bg
-    val shape = RoundedCornerShape(if (placed.instant) 50 else 8)
-    val width = colWidth * placed.width.toFloat() - (inset + 3).dp
-    val base = Modifier
-        .offset(x = colWidth * placed.left.toFloat() + inset.dp, y = (placed.top * PX_PER_MIN + 2).dp)
+    var card by remember { mutableStateOf(false) }
+    val density = LocalDensity.current
+    val shape = RoundedCornerShape(50)
+    val chip = Modifier
         .alpha(if (muted) 0.4f else 1f)
+        .height(CHIP_DP)
         .clip(shape)
-        .background(bg)
-        .border(border, shape)
-        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onSelect(span) }
-    if (placed.instant) {
+        .background(style.bg)
+        .border(BorderStroke(1.dp, style.border), shape)
+        .combinedClickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = { onSelect(span) },
+            onLongClick = { if (iconOnly || cover != null) card = true },
+        )
+    if (iconOnly) {
+        Box(chip.size(CHIP_DP), contentAlignment = Alignment.Center) { CategoryIndicator(span, style.dot) }
+    } else {
         Row(
-            base.height(22.dp).widthIn(max = width).padding(horizontal = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            chip.widthIn(max = 260.dp).padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             CategoryIndicator(span, style.dot)
             Text(
-                span.title,
+                displayTitle(span),
                 color = Mist,
-                fontSize = 11.sp,
+                fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -217,35 +272,102 @@ private fun SpanBlock(placed: PlacedSpan, hasChildren: Boolean, colWidth: Dp, on
             )
             if (amount != null) Text(amount, color = Mist, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
         }
-    } else {
-        Column(
-            base.width(width).height(heightDp).padding(horizontal = 8.dp, vertical = if (showTime && !hasChildren) 8.dp else 3.dp),
-            verticalArrangement = if (showTime) Arrangement.SpaceBetween else Arrangement.Center,
+    }
+    if (card) {
+        Popup(
+            alignment = Alignment.TopStart,
+            offset = IntOffset(0, with(density) { (CHIP_DP + 4.dp).roundToPx() }),
+            onDismissRequest = { card = false },
         ) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    span.title,
-                    color = Mist,
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                    textDecoration = if (muted) TextDecoration.LineThrough else null,
-                )
-                CategoryIndicator(span, style.dot)
-            }
-            if (showTime) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        formatTime(span.startMs) + (span.endMs?.let { " – ${formatTime(it)}" } ?: ""),
-                        color = style.subtext,
-                        fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace,
-                        maxLines = 1,
+            Row(
+                Modifier
+                    .widthIn(max = 300.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF111215))
+                    .border(BorderStroke(1.dp, BorderSubtle), RoundedCornerShape(12.dp))
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (cover != null) {
+                    RemoteImage(
+                        cover,
+                        Modifier
+                            .size(width = if (span.source == "youtube") 112.dp else 64.dp, height = 64.dp)
+                            .clip(RoundedCornerShape(8.dp)),
                     )
-                    if (amount != null) Text(amount, color = Mist, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
                 }
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(displayTitle(span), color = Mist, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    spanSubtitle(span)?.let { Text(it, color = SmokeDark, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    Text(formatTime(span.startMs), color = SmokeDark, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpanBlock(placed: PlacedSpan, hasChildren: Boolean, colWidth: Dp, onSelect: (Span) -> Unit) {
+    val span = placed.span
+    val style = spanStyle(span)
+    val inset = placed.depth * INDENT_DP + 3
+    val heightDp = maxOf(placed.height * PX_PER_MIN - 2, 22.0).dp
+    val showTime = heightDp >= 48.dp
+    val amount = formatAmount(span)
+    val estimated = isEstimated(span)
+    val muted = span.status == SpanStatus.Cancelled
+    val border = when (span.status) {
+        SpanStatus.Active -> BorderStroke(1.dp, Color.White.copy(alpha = 0.45f))
+        SpanStatus.Failed -> BorderStroke(1.dp, CoralPulse)
+        else -> BorderStroke(1.dp, style.border)
+    }
+    val bg = if (hasChildren) lerp(Color(0xFF111215), style.bg, 0.6f) else style.bg
+    val shape = RoundedCornerShape(8.dp)
+    val width = colWidth * placed.width.toFloat() - (inset + 3).dp
+    val dashed = Modifier.drawBehind {
+        drawRoundRect(
+            color = style.border,
+            cornerRadius = CornerRadius(8.dp.toPx()),
+            style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f))),
+        )
+    }
+    Column(
+        Modifier
+            .offset(x = colWidth * placed.left.toFloat() + inset.dp, y = (placed.top * PX_PER_MIN + 2).dp)
+            .alpha(if (muted) 0.4f else 1f)
+            .width(width)
+            .height(heightDp)
+            .clip(shape)
+            .background(bg)
+            .then(if (estimated) dashed else Modifier.border(border, shape))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onSelect(span) }
+            .padding(horizontal = 8.dp, vertical = if (showTime && !hasChildren) 8.dp else 3.dp),
+        verticalArrangement = if (showTime) Arrangement.SpaceBetween else Arrangement.Center,
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                displayTitle(span),
+                color = Mist,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+                textDecoration = if (muted) TextDecoration.LineThrough else null,
+            )
+            CategoryIndicator(span, style.dot)
+        }
+        if (showTime) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    (if (estimated) "≈ " else "") + formatTime(span.startMs) + (span.endMs?.let { " – ${formatTime(it)}" } ?: ""),
+                    color = style.subtext,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                )
+                if (amount != null) Text(amount, color = Mist, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
             }
         }
     }

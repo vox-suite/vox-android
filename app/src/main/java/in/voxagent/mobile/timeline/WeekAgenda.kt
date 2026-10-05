@@ -34,8 +34,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import `in`.voxagent.mobile.spans.Span
+import `in`.voxagent.mobile.spans.displayTitle
 import `in`.voxagent.mobile.spans.SpanStatus
-import `in`.voxagent.mobile.spans.categoryStyle
+import `in`.voxagent.mobile.spans.spanStyle
 import `in`.voxagent.mobile.spans.formatAmount
 import `in`.voxagent.mobile.spans.formatTime
 import `in`.voxagent.mobile.spans.isAllDay
@@ -109,7 +110,7 @@ fun WeekAgenda(
 
 @Composable
 private fun AgendaRow(span: Span, onSelect: (Span) -> Unit) {
-    val style = categoryStyle(span.category, span.schemaColorToken)
+    val style = spanStyle(span)
     val muted = span.status == SpanStatus.Cancelled
     val amount = formatAmount(span)
     Row(
@@ -126,7 +127,7 @@ private fun AgendaRow(span: Span, onSelect: (Span) -> Unit) {
             }
         }
         Column(Modifier.weight(1f)) {
-            Text(span.title, color = Mist, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis, textDecoration = if (muted) TextDecoration.LineThrough else null)
+            Text(displayTitle(span), color = Mist, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis, textDecoration = if (muted) TextDecoration.LineThrough else null)
             if (span.status != SpanStatus.Planned) Text(span.status.label, color = GraphiteDark, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
         }
         if (amount != null) Text(amount, color = Mist, fontSize = 11.sp, fontFamily = FontFamily.Monospace)

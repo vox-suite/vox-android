@@ -590,7 +590,6 @@ private fun HomeScreen(
               token = { latestToken },
               bottomInset = 88.dp,
               onOpenSpan = { sheet = SheetTarget.Edit(it) },
-              onNewSpan = { sheet = SheetTarget.New(it) },
               reloadSignal = timelineReload,
               onCollections = { timelineCollections = it },
           )

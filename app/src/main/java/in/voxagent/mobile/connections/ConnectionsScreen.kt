@@ -503,6 +503,14 @@ private fun PendingSetupBanner(
     }
 }
 
+private val successMessage = Regex("^(Account connected|Timeline refreshed|Disconnected\\.|Setup cancelled)")
+
+private fun statusGlyph(message: String): Pair<String, Color> = when {
+    successMessage.containsMatchIn(message) -> "✓" to Color(0xFF6EE7B7)
+    message.startsWith("Waiting") -> "…" to SmokeDark
+    else -> "!" to CoralPulse
+}
+
 @Composable
 private fun StatusToastBar(
     message: String,
@@ -519,6 +527,8 @@ private fun StatusToastBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
+        val (glyph, glyphColor) = statusGlyph(message)
+        Text(text = glyph, color = glyphColor, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 10.dp))
         Text(
             text = message,
             color = Mist,
@@ -657,13 +667,15 @@ private fun ConnectionCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Icon(
-                        painter = painterResource(if (isConnected) R.drawable.ic_settings else R.drawable.ic_plug),
+                        painter = painterResource(
+                            if (connector.id == "youtube") R.drawable.ic_refresh else if (isConnected) R.drawable.ic_settings else R.drawable.ic_plug,
+                        ),
                         contentDescription = null,
                         modifier = Modifier.size(15.dp),
                         tint = if (isConnected) Mist else brand.color,
                     )
                     Text(
-                        text = if (isConnected) "Configure" else "Connect",
+                        text = if (connector.id == "youtube") "Sync" else if (isConnected) "Configure" else "Connect",
                         fontWeight = FontWeight.Medium,
                         fontSize = 13.sp,
                     )
@@ -771,7 +783,11 @@ private fun ConnectionDetailSheet(
                         .border(BorderStroke(1.dp, BorderSubtle), RoundedCornerShape(10.dp))
                         .padding(12.dp),
                 ) {
-                    Text(text = statusMessage, color = Mist, fontSize = 12.sp)
+                    val (glyph, glyphColor) = statusGlyph(statusMessage)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = glyph, color = glyphColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text(text = statusMessage, color = Mist, fontSize = 12.sp)
+                    }
                 }
             }
 

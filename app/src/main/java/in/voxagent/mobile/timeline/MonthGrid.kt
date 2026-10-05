@@ -26,7 +26,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import `in`.voxagent.mobile.spans.Span
-import `in`.voxagent.mobile.spans.categoryStyle
+import `in`.voxagent.mobile.spans.spanStyle
 import `in`.voxagent.mobile.spans.monthGridDays
 import `in`.voxagent.mobile.spans.spansOnDay
 import `in`.voxagent.mobile.ui.theme.BorderSubtle
@@ -63,7 +63,7 @@ fun MonthGrid(anchor: LocalDate, spans: List<Span>, onSelectDay: (LocalDate) -> 
                             Text(day.dayOfMonth.toString(), color = Mist, fontSize = 13.sp, fontWeight = if (day == today) FontWeight.Bold else FontWeight.Medium, fontFamily = FontFamily.Monospace)
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                            items.take(3).forEach { s -> Box(Modifier.size(6.dp).clip(CircleShape).background(categoryStyle(s.category, s.schemaColorToken).dot)) }
+                            items.take(3).forEach { s -> Box(Modifier.size(6.dp).clip(CircleShape).background(spanStyle(s).dot)) }
                         }
                         if (items.size > 3) Text("+${items.size - 3}", color = SmokeDark, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
                     }

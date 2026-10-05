@@ -1,6 +1,11 @@
 package `in`.voxagent.mobile.spans
 
 import androidx.compose.ui.graphics.Color
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.format.DateTimeFormatter
@@ -87,3 +92,62 @@ fun formatMoney(amount: Double, currency: String = "INR"): String =
     }.getOrDefault("$amount $currency")
 
 fun formatAmount(span: Span): String? = span.amount?.let { formatMoney(it, span.currency) }
+
+private val SpotifyStyle = style(rgba(10, 42, 24, .9f), rgba(29, 185, 84, .45f), hex(0x1db954), rgba(134, 239, 172, .75f))
+private val YouTubeStyle = style(rgba(58, 10, 16, .9f), rgba(255, 0, 51, .45f), hex(0xff0033), rgba(252, 165, 165, .8f))
+private val PlayStationStyle = style(rgba(8, 30, 66, .9f), rgba(0, 112, 209, .5f), hex(0x0070d1), rgba(147, 197, 253, .8f))
+
+fun spanStyle(span: Span): CategoryStyle = when (span.source) {
+    "spotify" -> SpotifyStyle
+    "youtube" -> YouTubeStyle
+    "playstation" -> PlayStationStyle
+    else -> categoryStyle(span.category, span.schemaColorToken)
+}
+
+fun displayTitle(span: Span): String =
+    if (span.source == "playstation") span.title.removePrefix("PlayStation: ") else span.title
+
+private fun dataObject(span: Span): JsonObject? = span.data as? JsonObject
+
+private fun providerData(span: Span): JsonObject? = dataObject(span)?.get("provider_data") as? JsonObject
+
+private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
+
+fun spanCover(span: Span): String? = when (span.source) {
+    "spotify" -> {
+        val images = (providerData(span)?.get("album") as? JsonObject)?.get("images") as? JsonArray
+        (images?.getOrNull(1) as? JsonObject)?.string("url") ?: (images?.getOrNull(0) as? JsonObject)?.string("url")
+    }
+    "playstation" -> dataObject(span)?.string("image_url")
+    "youtube" -> providerData(span)?.string("video_id")?.takeIf { it.isNotEmpty() }?.let { "https://i.ytimg.com/vi/$it/mqdefault.jpg" }
+    else -> null
+}
+
+fun spanSubtitle(span: Span): String? = when (span.source) {
+    "spotify" -> ((providerData(span)?.get("artists") as? JsonArray)
+        ?.mapNotNull { (it as? JsonObject)?.string("name") }
+        ?.joinToString(", "))?.takeIf { it.isNotEmpty() }
+    "playstation" -> dataObject(span)?.string("platform")
+    "youtube" -> when (providerData(span)?.string("action")) {
+        "watch" -> "Watched on YouTube"
+        "like" -> "Liked on YouTube"
+        "playlist_addition" -> "Added to a playlist"
+        else -> null
+    }
+    else -> null
+}
+
+fun isEstimated(span: Span): Boolean = (dataObject(span)?.get("estimated") as? JsonPrimitive)?.booleanOrNull == true
+
+/** Entries whose title, time and status the provider owns (the server rejects edits). */
+fun isProviderOwned(span: Span): Boolean = span.source in setOf("google_calendar", "spotify", "youtube")
+
+fun sourceLabel(span: Span): String = when (span.source) {
+    "spotify" -> "Spotify"
+    "youtube" -> "YouTube"
+    "playstation" -> "PlayStation"
+    "google_calendar" -> "Google Calendar"
+    "swiggy" -> "Swiggy"
+    "zomato" -> "Zomato"
+    else -> span.source.replace('_', ' ').replaceFirstChar { it.uppercase() }
+}

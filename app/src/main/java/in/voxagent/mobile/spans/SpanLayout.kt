@@ -7,6 +7,8 @@ import java.time.temporal.ChronoUnit
 private const val MINUTE = 60_000L
 private const val DAY_MINUTES = 24 * 60
 const val MIN_BLOCK_MINUTES = 25.0
+const val SLOT_MINUTES = 15
+private const val SLOTS_PER_DAY = 24 * 60 / SLOT_MINUTES
 private const val CHILD_HEADER_MINUTES = 22.0
 
 val zone: ZoneId get() = ZoneId.systemDefault()
@@ -19,6 +21,7 @@ data class PlacedSpan(
     val width: Double,
     val depth: Int,
     val instant: Boolean,
+    val slot: Int? = null,
 )
 
 private class Node(val span: Span, var start: Double, var end: Double, val instant: Boolean) {
@@ -90,8 +93,10 @@ private fun pack(nodes: List<Node>, left: Double, width: Double, depth: Int, out
     }
     flush()
 
-    for (node in instants) {
-        out += PlacedSpan(node.span, node.start, node.end - node.start, left, width, depth, true)
+    // Instant entries belong to one of the 96 quarter-hour slots; a slot's entries sit side by side.
+    for (node in instants.sortedBy { it.start }) {
+        val slot = minOf((node.start / SLOT_MINUTES).toInt(), SLOTS_PER_DAY - 1)
+        out += PlacedSpan(node.span, (slot * SLOT_MINUTES).toDouble(), SLOT_MINUTES.toDouble(), left, width, depth, true, slot)
         pack(node.children, left, width, depth + 1, out)
     }
 }
@@ -109,8 +114,8 @@ fun layoutDay(spans: List<Span>, day: LocalDate): List<PlacedSpan> {
         if (outside) continue
         val s = (maxOf(start, dayStart) - dayStart).toDouble() / MINUTE
         val e = (minOf(end, dayEnd) - dayStart).toDouble() / MINUTE
-        val top = minOf(s, DAY_MINUTES - MIN_BLOCK_MINUTES)
-        nodes[span.id] = Node(span, top, maxOf(e, top + MIN_BLOCK_MINUTES), instant)
+        val top = if (instant) s else minOf(s, DAY_MINUTES - MIN_BLOCK_MINUTES)
+        nodes[span.id] = Node(span, top, if (instant) top else maxOf(e, top + MIN_BLOCK_MINUTES), instant)
     }
     val roots = mutableListOf<Node>()
     for (node in nodes.values) {
