@@ -75,6 +75,21 @@ class SmsSyncWorker(
             return true
         }
 
+        val backfillDays = inputData.getInt(KEY_BACKFILL_DAYS, 0)
+        if (backfillDays > 0) {
+            // One-off history import: messages already uploaded are de-duplicated by the server.
+            var since = System.currentTimeMillis() - backfillDays * DAY_MILLIS
+            while (true) {
+                val messages = reader.readSince(since, BATCH_SIZE)
+                if (messages.isEmpty()) break
+                if (!syncPage(messages)) return@withContext Result.retry()
+                since = java.time.Instant.parse(messages.last().received_at).toEpochMilli()
+                if (messages.size < BATCH_SIZE) break
+            }
+            RemoteLog.i(TAG, "backfill finished: days=$backfillDays read=$totalRead uploaded=$totalUploaded otpSkipped=$totalOtpSkipped")
+            return@withContext Result.success()
+        }
+
         if (cursor == null) {
             // First ever sync: only the most recent messages, not the whole inbox.
             val first = reader.readLatest(FIRST_SYNC_MESSAGES)
@@ -94,6 +109,9 @@ class SmsSyncWorker(
 
     companion object {
         const val UNIQUE_WORK_NAME = "sms_sync"
+        const val KEY_BACKFILL_DAYS = "backfill_days"
+        const val BACKFILL_DAYS = 90
+        private const val DAY_MILLIS = 24L * 60 * 60 * 1000
         private const val BATCH_SIZE = 256
         private const val FIRST_SYNC_MESSAGES = 256
     }

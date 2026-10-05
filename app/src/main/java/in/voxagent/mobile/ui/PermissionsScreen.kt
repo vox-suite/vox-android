@@ -80,6 +80,7 @@ fun PermissionsScreen(
     onToggleSms: (Boolean) -> Unit,
     onToggleLocation: (Boolean) -> Unit,
     onSyncSms: () -> Unit,
+    onBackfillSms: () -> Unit,
     onOpenSettings: () -> Unit,
     onAllowAll: () -> Unit,
     onClose: () -> Unit,
@@ -127,7 +128,11 @@ fun PermissionsScreen(
                     checked = smsOn,
                     enabled = !busy,
                     onCheckedChange = onToggleSms,
-                    action = if (smsOn) "Sync now" to onSyncSms else null,
+                    actions = if (smsOn) {
+                        listOf("Sync now" to onSyncSms, "Sync last 3 months" to onBackfillSms)
+                    } else {
+                        emptyList()
+                    },
                 )
                 PermissionRow(
                     title = "Location & activity",
@@ -165,7 +170,7 @@ private fun PermissionRow(
     checked: Boolean,
     enabled: Boolean,
     onCheckedChange: (Boolean) -> Unit,
-    action: Pair<String, () -> Unit>? = null,
+    actions: List<Pair<String, () -> Unit>> = emptyList(),
 ) {
     var expanded by remember { mutableStateOf(false) }
     Column(
@@ -198,7 +203,7 @@ private fun PermissionRow(
             if (details.isNotEmpty()) {
                 LinkText(if (expanded) "Hide details" else "Details") { expanded = !expanded }
             }
-            if (action != null) LinkText(action.first, action.second)
+            actions.forEach { (label, onClick) -> LinkText(label, onClick) }
         }
         if (expanded) {
             details.forEach { detail ->

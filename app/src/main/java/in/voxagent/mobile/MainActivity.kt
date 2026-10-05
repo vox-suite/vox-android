@@ -59,6 +59,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import android.os.Build
 import `in`.voxagent.mobile.R
 import `in`.voxagent.mobile.auth.AuthError
@@ -376,6 +377,7 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
                 }
             },
             onSyncSms = { triggerImmediateSync(activity) },
+            onBackfillSms = { triggerBackfillSync(activity) },
             onOpenSettings = { openAppSettings(activity) },
             onAllowAll = {
                 saving { token ->
@@ -672,6 +674,17 @@ private fun triggerImmediateSync(activity: ComponentActivity) {
     // Unique so repeated taps or app opens never run overlapping syncs.
     WorkManager.getInstance(activity).enqueueUniqueWork(
         "sms_sync_now",
+        ExistingWorkPolicy.KEEP,
+        request,
+    )
+}
+
+private fun triggerBackfillSync(activity: ComponentActivity) {
+    val request = OneTimeWorkRequestBuilder<SmsSyncWorker>()
+        .setInputData(workDataOf(SmsSyncWorker.KEY_BACKFILL_DAYS to SmsSyncWorker.BACKFILL_DAYS))
+        .build()
+    WorkManager.getInstance(activity).enqueueUniqueWork(
+        "sms_backfill",
         ExistingWorkPolicy.KEEP,
         request,
     )
