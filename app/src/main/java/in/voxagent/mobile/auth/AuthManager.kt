@@ -8,6 +8,12 @@ import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.NoCredentialException
 import `in`.voxagent.mobile.BuildConfig
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.contentOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Request
+import okhttp3.MediaType.Companion.toMediaType
 import `in`.voxagent.mobile.net.VoxHttp
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -83,7 +89,7 @@ class AuthManager(private val context: Context) {
             RemoteLog.d(TAG, "signIn: got Google ID token, exchanging with backend")
             val requestJson = json.encodeToString(
                 AuthExchangeRequest.serializer(),
-                AuthExchangeRequest(id_token = authResult.idToken),
+                AuthExchangeRequest(id_token = supabaseAccessToken(authResult.idToken) ?: authResult.idToken),
             )
             val responseJson = try {
                 VoxHttp.postJson("/v1/auth/exchange", requestJson)
@@ -107,6 +113,34 @@ class AuthManager(private val context: Context) {
         }.onFailure { e ->
             RemoteLog.e(TAG, "signIn: failed: ${e::class.simpleName} - ${e.message}", e)
         }
+    }
+
+    /**
+     * Trades the Google ID token for a Supabase session so this device signs in as the same
+     * Vox user as the desktop app. Returns null (and sign-in uses the Google token) if Supabase
+     * is not configured or rejects the token.
+     */
+    private fun supabaseAccessToken(googleIdToken: String): String? {
+        val base = BuildConfig.VOX_SUPABASE_URL.trimEnd('/')
+        val anonKey = BuildConfig.VOX_SUPABASE_ANON_KEY
+        if (base.isBlank() || anonKey.isBlank()) return null
+        return runCatching {
+            val body = """{"provider":"google","id_token":"$googleIdToken"}"""
+                .toRequestBody("application/json".toMediaType())
+            val request = Request.Builder()
+                .url("$base/auth/v1/token?grant_type=id_token")
+                .header("apikey", anonKey)
+                .header("Authorization", "Bearer $anonKey")
+                .post(body)
+                .build()
+            VoxHttp.client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    RemoteLog.w(TAG, "supabase id_token sign-in rejected: ${response.code}")
+                    return@use null
+                }
+                json.parseToJsonElement(response.body.string()).jsonObject["access_token"]?.jsonPrimitive?.contentOrNull
+            }
+        }.onFailure { RemoteLog.w(TAG, "supabase sign-in failed: ${it::class.simpleName}") }.getOrNull()
     }
 
     fun signOut() {

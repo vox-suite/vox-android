@@ -31,6 +31,16 @@ android {
         )
         buildConfigField(
             "String",
+            "VOX_SUPABASE_URL",
+            "\"${localProperties.getProperty("VOX_SUPABASE_URL", "")}\"",
+        )
+        buildConfigField(
+            "String",
+            "VOX_SUPABASE_ANON_KEY",
+            "\"${localProperties.getProperty("VOX_SUPABASE_ANON_KEY", "")}\"",
+        )
+        buildConfigField(
+            "String",
             "VOX_API_BASE_URL",
             "\"${localProperties.getProperty("VOX_API_BASE_URL", "https://api.voxagent.in")}\"",
         )
