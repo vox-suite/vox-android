@@ -66,9 +66,6 @@ import `in`.voxagent.mobile.auth.AuthError
 import `in`.voxagent.mobile.auth.AuthManager
 import `in`.voxagent.mobile.net.VoxHttp
 import `in`.voxagent.mobile.auth.UserProfile
-import `in`.voxagent.mobile.location.LocationConsentApi
-import `in`.voxagent.mobile.location.LocationConsentStatus
-import `in`.voxagent.mobile.location.LocationTrackingManager
 import `in`.voxagent.mobile.map.MissionMapBackground
 import `in`.voxagent.mobile.sms.SmsConsentApi
 import `in`.voxagent.mobile.sms.SmsConsentStatus
@@ -180,25 +177,6 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
         )
     }
 
-    var locationConsentStatus by remember { mutableStateOf<LocationConsentStatus?>(null) }
-    var activityRecognitionGranted by remember {
-        mutableStateOf(
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
-                ContextCompat.checkSelfPermission(
-                    activity,
-                    Manifest.permission.ACTIVITY_RECOGNITION,
-                ) == PackageManager.PERMISSION_GRANTED,
-        )
-    }
-    var backgroundLocationGranted by remember {
-        mutableStateOf(
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
-                ContextCompat.checkSelfPermission(
-                    activity,
-                    Manifest.permission.ACCESS_BACKGROUND_LOCATION,
-                ) == PackageManager.PERMISSION_GRANTED,
-        )
-    }
     var micGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(activity, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED,
@@ -209,11 +187,6 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
     var permissionsPromptBusy by remember { mutableStateOf(false) }
     var permissionsPromptError by remember { mutableStateOf("") }
 
-    val backgroundLocationLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        backgroundLocationGranted = granted
-    }
     val runtimePermissionsLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { result ->
@@ -225,11 +198,6 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
         }
         val fine = result[Manifest.permission.ACCESS_FINE_LOCATION] ?: locationPermissionGranted
         locationPermissionGranted = fine
-        activityRecognitionGranted = result[Manifest.permission.ACTIVITY_RECOGNITION] ?: activityRecognitionGranted
-        // Background location must be asked for separately, after foreground location is granted.
-        if (result[Manifest.permission.ACCESS_FINE_LOCATION] == true && fine && !backgroundLocationGranted) {
-            backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-        }
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -241,29 +209,10 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
                 micGranted = granted(Manifest.permission.RECORD_AUDIO)
                 smsPermissionGranted = granted(Manifest.permission.READ_SMS)
                 locationPermissionGranted = granted(Manifest.permission.ACCESS_FINE_LOCATION)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    activityRecognitionGranted = granted(Manifest.permission.ACTIVITY_RECOGNITION)
-                    backgroundLocationGranted = granted(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    LaunchedEffect(
-        activityRecognitionGranted,
-        backgroundLocationGranted,
-        locationPermissionGranted,
-        locationConsentStatus,
-    ) {
-        if (locationConsentStatus?.granted == true &&
-            locationPermissionGranted && activityRecognitionGranted && backgroundLocationGranted
-        ) {
-            LocationTrackingManager.start(activity)
-        } else if (locationConsentStatus?.granted == false) {
-            LocationTrackingManager.stopAndClear(activity)
-        }
     }
 
     LaunchedEffect(signedIn) {
@@ -273,8 +222,6 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
             .onSuccess { phoneStatus = it }
         runCatching { SmsConsentApi.getStatus(token) }
             .onSuccess { consentStatus = it }
-        runCatching { LocationConsentApi.getStatus(token) }
-            .onSuccess { locationConsentStatus = it }
     }
 
     if (!signedIn) {
@@ -310,13 +257,12 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
     }
 
     val allPermissionsSet = micGranted && smsPermissionGranted && locationPermissionGranted &&
-        activityRecognitionGranted && backgroundLocationGranted &&
-        consentStatus?.granted == true && locationConsentStatus?.granted == true
+        consentStatus?.granted == true
     LaunchedEffect(allPermissionsSet) {
         if (allPermissionsSet && !permissionsPromptForced) permissionsPromptOpen = false
     }
 
-    if (permissionsPromptOpen && consentStatus != null && locationConsentStatus != null &&
+    if (permissionsPromptOpen && consentStatus != null &&
         (permissionsPromptForced || !allPermissionsSet)
     ) {
         fun saving(block: suspend (String) -> Unit) {
@@ -331,8 +277,7 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
         PermissionsScreen(
             micOn = micGranted,
             smsOn = consentStatus?.granted == true && smsPermissionGranted,
-            locationOn = locationConsentStatus?.granted == true && locationPermissionGranted &&
-                activityRecognitionGranted && backgroundLocationGranted,
+            locationOn = locationPermissionGranted,
             busy = permissionsPromptBusy,
             errorMessage = permissionsPromptError,
             onToggleMic = { on ->
@@ -360,20 +305,12 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
                 }
             },
             onToggleLocation = { on ->
-                saving { token ->
-                    if (on) {
-                        if (locationConsentStatus?.granted != true) locationConsentStatus = LocationConsentApi.grant(token)
-                        val wanted = buildList {
-                            add(Manifest.permission.ACCESS_FINE_LOCATION)
-                            add(Manifest.permission.ACCESS_COARSE_LOCATION)
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) add(Manifest.permission.ACTIVITY_RECOGNITION)
-                        }
-                        runtimePermissionsLauncher.launch(wanted.toTypedArray())
-                    } else {
-                        LocationConsentApi.revoke(token)
-                        locationConsentStatus = locationConsentStatus?.copy(granted = false)
-                        LocationTrackingManager.stopAndClear(activity)
-                    }
+                if (on) {
+                    runtimePermissionsLauncher.launch(
+                        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+                    )
+                } else {
+                    openAppSettings(activity)
                 }
             },
             onSyncSms = { triggerImmediateSync(activity) },
@@ -382,13 +319,11 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
             onAllowAll = {
                 saving { token ->
                     if (consentStatus?.granted != true) consentStatus = SmsConsentApi.grant(token)
-                    if (locationConsentStatus?.granted != true) locationConsentStatus = LocationConsentApi.grant(token)
                     val wanted = buildList {
                         add(Manifest.permission.RECORD_AUDIO)
                         add(Manifest.permission.READ_SMS)
                         add(Manifest.permission.ACCESS_FINE_LOCATION)
                         add(Manifest.permission.ACCESS_COARSE_LOCATION)
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) add(Manifest.permission.ACTIVITY_RECOGNITION)
                     }
                     runtimePermissionsLauncher.launch(wanted.toTypedArray())
                 }
@@ -420,7 +355,6 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
             authManager.signOut()
             signedIn = false
             consentStatus = null
-            locationConsentStatus = null
         },
         onSyncProfile = {
             scope.launch {

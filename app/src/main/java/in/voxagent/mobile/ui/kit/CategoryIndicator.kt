@@ -21,6 +21,7 @@ fun CategoryIndicator(span: Span, color: Color, modifier: Modifier = Modifier, d
         "spotify" -> R.drawable.ic_spotify
         "youtube" -> R.drawable.ic_youtube
         "playstation" -> R.drawable.ic_playstation
+        "google_maps" -> R.drawable.ic_google_maps
         else -> null
     }
     val icon = span.schemaIconToken?.let { schemaIcon(it) }

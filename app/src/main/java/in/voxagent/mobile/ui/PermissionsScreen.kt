@@ -24,7 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import `in`.voxagent.mobile.location.LOCATION_RETENTION_DAYS
 import `in`.voxagent.mobile.sms.SMS_RETENTION_DAYS
 import `in`.voxagent.mobile.ui.theme.CoralPulse
 import `in`.voxagent.mobile.ui.theme.GraphiteDark
@@ -47,25 +46,6 @@ private val smsDetails = listOf(
     PermissionDetail(
         "Your control",
         "Turn this off at any time. Revoking stops new messages from being read; nothing already processed is retroactively affected.",
-    ),
-)
-
-private val locationDetails = listOf(
-    PermissionDetail(
-        "How stops get a name",
-        "When you stay somewhere for 5+ minutes, Vox takes one location reading for that stop and looks it up with Google Places to show a name like \"Westfield Mall\" instead of just \"Stationary.\" That single point is never recorded while you're moving.",
-    ),
-    PermissionDetail(
-        "Runs in the background",
-        "This keeps working even when the app is closed. It needs a separate \"Allow all the time\" location permission from the usual foreground-only one, plus Android's Activity Recognition permission.",
-    ),
-    PermissionDetail(
-        "What's kept",
-        "Completed periods of movement or a named stop (e.g. \"Driving for 45 min\" or \"Westfield Mall for 1h 30min\") appear in your Vox Timeline — not continuous stationary time. Retained for $LOCATION_RETENTION_DAYS days by default, then automatically deleted.",
-    ),
-    PermissionDetail(
-        "Your control",
-        "Turn this off at any time. Revoking stops tracking immediately; nothing already recorded is retroactively affected.",
     ),
 )
 
@@ -135,9 +115,9 @@ fun PermissionsScreen(
                     },
                 )
                 PermissionRow(
-                    title = "Location & activity",
-                    summary = "Vox notices when you start and stop driving, walking or cycling, and names the places you stay at for 5+ minutes. It is not a continuous GPS trail.",
-                    details = locationDetails,
+                    title = "Location",
+                    summary = "Shows where you are on the Vox map while the app is open. Location is not recorded in the background.",
+                    details = emptyList(),
                     checked = locationOn,
                     enabled = !busy,
                     onCheckedChange = onToggleLocation,

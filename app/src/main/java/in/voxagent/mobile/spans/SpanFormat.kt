@@ -95,12 +95,14 @@ fun formatAmount(span: Span): String? = span.amount?.let { formatMoney(it, span.
 
 private val SpotifyStyle = style(rgba(10, 42, 24, .9f), rgba(29, 185, 84, .45f), hex(0x1db954), rgba(134, 239, 172, .75f))
 private val YouTubeStyle = style(rgba(58, 10, 16, .9f), rgba(255, 0, 51, .45f), hex(0xff0033), rgba(252, 165, 165, .8f))
+private val MapsStyle = style(rgba(12, 40, 30, .9f), rgba(52, 168, 83, .45f), hex(0x34a853), rgba(167, 243, 208, .8f))
 private val PlayStationStyle = style(rgba(8, 30, 66, .9f), rgba(0, 112, 209, .5f), hex(0x0070d1), rgba(147, 197, 253, .8f))
 
 fun spanStyle(span: Span): CategoryStyle = when (span.source) {
     "spotify" -> SpotifyStyle
     "youtube" -> YouTubeStyle
     "playstation" -> PlayStationStyle
+    "google_maps" -> MapsStyle
     else -> categoryStyle(span.category, span.schemaColorToken)
 }
 
@@ -140,11 +142,12 @@ fun spanSubtitle(span: Span): String? = when (span.source) {
 fun isEstimated(span: Span): Boolean = (dataObject(span)?.get("estimated") as? JsonPrimitive)?.booleanOrNull == true
 
 /** Entries whose title, time and status the provider owns (the server rejects edits). */
-fun isProviderOwned(span: Span): Boolean = span.source in setOf("google_calendar", "spotify", "youtube")
+fun isProviderOwned(span: Span): Boolean = span.source in setOf("google_calendar", "spotify", "youtube", "google_maps")
 
 fun sourceLabel(span: Span): String = when (span.source) {
     "spotify" -> "Spotify"
     "youtube" -> "YouTube"
+    "google_maps" -> "Google Maps"
     "playstation" -> "PlayStation"
     "google_calendar" -> "Google Calendar"
     "swiggy" -> "Swiggy"

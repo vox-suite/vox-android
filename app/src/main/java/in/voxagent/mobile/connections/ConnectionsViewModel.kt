@@ -125,7 +125,7 @@ class ConnectionsViewModel(
                 }
                 _ui.update {
                     it.copy(
-                        connectors = connectors,
+                        connectors = connectors.filter { c -> c.auth_type != "import" },
                         connections = connections,
                         loading = false,
                         error = null,

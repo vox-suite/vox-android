@@ -21,8 +21,8 @@ android {
         applicationId = "in.voxagent.mobile"
         minSdk = 26
         targetSdk = 37
-        versionCode = 17
-        versionName = "0.1.48"
+        versionCode = 51
+        versionName = "0.2.02"
 
         buildConfigField(
             "String",
@@ -42,7 +42,7 @@ android {
         buildConfigField(
             "String",
             "VOX_API_BASE_URL",
-            "\"${localProperties.getProperty("VOX_API_BASE_URL", "https://api.voxagent.in")}\"",
+            "\"${localProperties.getProperty("VOX_API_BASE_URL", "https://api.callvox.in")}\"",
         )
     }
 
@@ -83,6 +83,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
 
     implementation("com.jakewharton.timber:timber:5.0.1")
     implementation("androidx.work:work-runtime-ktx:2.12.0")
@@ -94,7 +95,6 @@ dependencies {
     implementation("com.google.android.libraries.identity.googleid:googleid:1.2.1")
 
     implementation("org.maplibre.gl:android-sdk:13.6.1")
-    implementation("com.google.android.gms:play-services-location:21.4.0")
 
     implementation("com.squareup.okhttp3:okhttp:5.5.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
