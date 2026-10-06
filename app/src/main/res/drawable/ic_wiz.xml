@@ -1,0 +1,22 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+    <!-- White rounded badge -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M20,20h60a20,20 0 0 1 20,20v20a20,20 0 0 1 -20,20h-60a20,20 0 0 1 -20,-20v-20a20,20 0 0 1 20,-20z" />
+    <!-- "W" -->
+    <path
+        android:fillColor="#6228B5"
+        android:pathData="M18,37l6,26h5l5,-19l5,19h5l6,-26h-6l-3,18l-5,-18h-4l-5,18l-3,-18z" />
+    <!-- "i" -->
+    <path
+        android:fillColor="#6228B5"
+        android:pathData="M54,34a3,3 0 1,0 0,6a3,3 0 1,0 0,-6z M51,43h6v20h-6z" />
+    <!-- "Z" -->
+    <path
+        android:fillColor="#6228B5"
+        android:pathData="M65,37h18v5l-11,15h11v6h-19v-5l11,-15h-11z" />
+</vector>

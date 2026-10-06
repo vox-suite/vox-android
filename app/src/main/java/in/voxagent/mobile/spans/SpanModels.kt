@@ -58,10 +58,12 @@ data class Span(
     @SerialName("schema_color_token") val schemaColorToken: Int? = null,
     @SerialName("schema_icon_token") val schemaIconToken: Int? = null,
     @SerialName("collection_ids") val collectionIds: List<String> = emptyList(),
+    @SerialName("created_at") val createdAt: String? = null,
     val version: Int = 0,
 ) {
     val startMs: Long? get() = startAt?.let { runCatching { OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull() }
     val endMs: Long? get() = endAt?.let { runCatching { OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull() }
+    val createdMs: Long? get() = createdAt?.let { runCatching { OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull() }
     val amount: Double? get() = ((data as? JsonObject)?.get("amount") as? JsonPrimitive)?.takeIf { !it.isString }?.doubleOrNull
     val currency: String get() = ((data as? JsonObject)?.get("currency") as? JsonPrimitive)?.contentOrNull ?: "INR"
 }

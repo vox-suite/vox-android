@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -307,13 +309,13 @@ private fun InstantChip(span: Span, onSelect: (Span) -> Unit) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SpanBlock(placed: PlacedSpan, hasChildren: Boolean, colWidth: Dp, onSelect: (Span) -> Unit) {
     val span = placed.span
     val style = spanStyle(span)
     val inset = placed.depth * INDENT_DP + 3
     val heightDp = maxOf(placed.height * PX_PER_MIN - 2, 22.0).dp
-    val showTime = heightDp >= 48.dp
     val amount = formatAmount(span)
     val estimated = isEstimated(span)
     val muted = span.status == SpanStatus.Cancelled
@@ -332,8 +334,11 @@ private fun SpanBlock(placed: PlacedSpan, hasChildren: Boolean, colWidth: Dp, on
             style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f))),
         )
     }
-    Column(
-        Modifier
+    val timeText = (if (estimated) "≈ " else "") + formatTime(span.startMs) + (span.endMs?.let { " – ${formatTime(it)}" } ?: "")
+    val canFitTwoLines = heightDp >= 38.dp && !hasChildren
+
+    Box(
+        modifier = Modifier
             .offset(x = colWidth * placed.left.toFloat() + inset.dp, y = (placed.top * PX_PER_MIN + 2).dp)
             .alpha(if (muted) 0.4f else 1f)
             .width(width)
@@ -342,33 +347,51 @@ private fun SpanBlock(placed: PlacedSpan, hasChildren: Boolean, colWidth: Dp, on
             .background(bg)
             .then(if (estimated) dashed else Modifier.border(border, shape))
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onSelect(span) }
-            .padding(horizontal = 8.dp, vertical = if (showTime && !hasChildren) 8.dp else 3.dp),
-        verticalArrangement = if (showTime) Arrangement.SpaceBetween else Arrangement.Center,
+            .padding(horizontal = 8.dp, vertical = if (canFitTwoLines) 5.dp else 2.dp),
+        contentAlignment = if (canFitTwoLines) Alignment.TopStart else Alignment.CenterStart,
     ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                displayTitle(span),
-                color = Mist,
-                fontSize = 11.5.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-                textDecoration = if (muted) TextDecoration.LineThrough else null,
-            )
-            CategoryIndicator(span, style.dot)
-        }
-        if (showTime) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top,
+        ) {
+            FlowRow(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(1.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
+                maxLines = if (canFitTwoLines) 2 else 1,
+            ) {
                 Text(
-                    (if (estimated) "≈ " else "") + formatTime(span.startMs) + (span.endMs?.let { " – ${formatTime(it)}" } ?: ""),
+                    text = displayTitle(span),
+                    color = Mist,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textDecoration = if (muted) TextDecoration.LineThrough else null,
+                )
+                Text(
+                    text = timeText,
                     color = style.subtext,
                     fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                if (amount != null) Text(amount, color = Mist, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                if (amount != null) {
+                    Text(
+                        text = amount,
+                        color = Mist,
+                        fontSize = 9.sp,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                    )
+                }
             }
+            CategoryIndicator(span, style.dot)
         }
     }
 }

@@ -26,8 +26,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -95,6 +98,7 @@ fun TimelineScreen(
     }
 }
 
+@Suppress("DEPRECATION")
 @Composable
 private fun Header(ui: TimelineUi, vm: TimelineViewModel) {
     val monthFmt = remember { DateTimeFormatter.ofPattern("MMM", Locale.getDefault()) }
@@ -107,19 +111,74 @@ private fun Header(ui: TimelineUi, vm: TimelineViewModel) {
         ViewMode.Day -> ui.anchor.format(dayFmt)
         else -> "${days.first().format(shortFmt)} – ${days.last().format(shortYearFmt)}"
     }
+    val badgeTextStyle = remember {
+        TextStyle(
+            platformStyle = PlatformTextStyle(includeFontPadding = false),
+            lineHeightStyle = LineHeightStyle(
+                alignment = LineHeightStyle.Alignment.Center,
+                trim = LineHeightStyle.Trim.Both,
+            ),
+        )
+    }
+    val titleTextStyle = remember {
+        TextStyle(
+            platformStyle = PlatformTextStyle(includeFontPadding = false),
+            lineHeightStyle = LineHeightStyle(
+                alignment = LineHeightStyle.Alignment.Center,
+                trim = LineHeightStyle.Trim.Both,
+            ),
+        )
+    }
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(
-                Modifier.size(42.dp).clip(RoundedCornerShape(10.dp)).background(Obsidian).border(1.dp, BorderSubtle, RoundedCornerShape(10.dp)),
+                Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Obsidian)
+                    .border(1.dp, BorderSubtle, RoundedCornerShape(8.dp)),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Text(ui.anchor.format(monthFmt).uppercase(), color = CoralPulse, fontSize = 8.5.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                Text(ui.anchor.dayOfMonth.toString(), color = Mist, fontSize = 14.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                Text(
+                    text = ui.anchor.format(monthFmt).uppercase(),
+                    color = CoralPulse,
+                    fontSize = 8.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    letterSpacing = 0.5.sp,
+                    lineHeight = 10.sp,
+                    style = badgeTextStyle,
+                )
+                Text(
+                    text = ui.anchor.dayOfMonth.toString(),
+                    color = Mist,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    lineHeight = 16.sp,
+                    style = badgeTextStyle,
+                )
             }
-            Column(Modifier.weight(1f)) {
-                Text(ui.collection?.name ?: ui.anchor.format(titleFmt), color = Mist, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                Text(range, color = SmokeDark, fontSize = 10.5.sp, fontFamily = FontFamily.Monospace, maxLines = 1)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = ui.collection?.name ?: ui.anchor.format(titleFmt),
+                    color = Mist,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = 20.sp,
+                    style = titleTextStyle,
+                    maxLines = 1,
+                )
+                Text(
+                    text = range,
+                    color = SmokeDark,
+                    fontSize = 10.5.sp,
+                    fontFamily = FontFamily.Monospace,
+                    lineHeight = 14.sp,
+                    style = titleTextStyle,
+                    maxLines = 1,
+                )
             }
             ui.collection?.let { Text(it.kind, color = GraphiteDark, fontSize = 10.sp, fontFamily = FontFamily.Monospace) }
             Glyph(if (ui.loading) "…" else "↻") { vm.reload() }

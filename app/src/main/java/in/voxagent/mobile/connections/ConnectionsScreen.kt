@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -60,9 +61,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -547,6 +551,41 @@ private fun StatusToastBar(
 }
 
 @Composable
+private fun BrandMark(
+    brand: BrandMeta,
+    name: String,
+    size: Dp = 46.dp,
+    modifier: Modifier = Modifier,
+) {
+    if (brand.bare) {
+        Image(
+            painter = painterResource(brand.iconRes),
+            contentDescription = name,
+            modifier = modifier
+                .size(size)
+                .clip(RoundedCornerShape(11.dp)),
+            contentScale = ContentScale.Fit,
+        )
+    } else {
+        Box(
+            modifier = modifier
+                .size(size)
+                .clip(RoundedCornerShape(11.dp))
+                .background(brand.color.copy(alpha = 0.15f))
+                .border(BorderStroke(1.dp, brand.color.copy(alpha = 0.35f)), RoundedCornerShape(11.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                painter = painterResource(brand.iconRes),
+                contentDescription = name,
+                modifier = Modifier.size(size * 0.58f),
+                contentScale = ContentScale.Fit,
+            )
+        }
+    }
+}
+
+@Composable
 private fun ConnectionCard(
     connector: ConnectorDescriptor,
     connection: ConnectionItem?,
@@ -561,24 +600,27 @@ private fun ConnectionCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(Obsidian)
+            .background(Color(0xFF0E0F12))
             .border(BorderStroke(1.dp, BorderSubtle.copy(alpha = 0.7f)), RoundedCornerShape(18.dp))
+            .drawBehind {
+                val glowRadius = 240.dp.toPx()
+                val glowCenter = Offset(size.width - 10.dp.toPx(), 10.dp.toPx())
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        0.0f to brand.color.copy(alpha = 0.40f),
+                        0.35f to brand.color.copy(alpha = 0.18f),
+                        0.70f to brand.color.copy(alpha = 0.03f),
+                        1.0f to Color.Transparent,
+                        center = glowCenter,
+                        radius = glowRadius,
+                    ),
+                    radius = glowRadius,
+                    center = glowCenter,
+                )
+            }
             .clickable(onClick = onClick)
             .padding(18.dp),
     ) {
-        // Subtle ambient radial glow in top right
-        Box(
-            modifier = Modifier
-                .size(120.dp)
-                .align(Alignment.TopEnd)
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(brand.color.copy(alpha = 0.16f), Color.Transparent),
-                    ),
-                    shape = CircleShape,
-                ),
-        )
-
         Column(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -607,22 +649,11 @@ private fun ConnectionCard(
                     )
                 }
 
-                // Brand Icon Container
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(brand.color.copy(alpha = 0.15f))
-                        .border(BorderStroke(1.dp, brand.color.copy(alpha = 0.35f)), RoundedCornerShape(12.dp)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        painter = painterResource(brand.iconRes),
-                        contentDescription = connector.name,
-                        tint = if (brand.iconRes == R.drawable.ic_playstation) Color.Unspecified else brand.color,
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
+                BrandMark(
+                    brand = brand,
+                    name = connector.name,
+                    size = 46.dp,
+                )
             }
 
             // Status Pill
@@ -720,6 +751,22 @@ private fun ConnectionDetailSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .drawBehind {
+                    val glowRadius = 320.dp.toPx()
+                    val glowCenter = Offset(size.width, 0f)
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            0.0f to brand.color.copy(alpha = 0.35f),
+                            0.38f to brand.color.copy(alpha = 0.15f),
+                            0.70f to brand.color.copy(alpha = 0.03f),
+                            1.0f to Color.Transparent,
+                            center = glowCenter,
+                            radius = glowRadius,
+                        ),
+                        radius = glowRadius,
+                        center = glowCenter,
+                    )
+                }
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 22.dp)
                 .navigationBarsPadding()
@@ -731,21 +778,11 @@ private fun ConnectionDetailSheet(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(52.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(brand.color.copy(alpha = 0.16f))
-                        .border(BorderStroke(1.dp, brand.color.copy(alpha = 0.4f)), RoundedCornerShape(14.dp)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        painter = painterResource(brand.iconRes),
-                        contentDescription = connector.name,
-                        tint = if (brand.iconRes == R.drawable.ic_playstation) Color.Unspecified else brand.color,
-                        modifier = Modifier.size(30.dp),
-                    )
-                }
+                BrandMark(
+                    brand = brand,
+                    name = connector.name,
+                    size = 52.dp,
+                )
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
