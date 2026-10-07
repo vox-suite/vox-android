@@ -53,7 +53,9 @@ class SmsSyncWorker(
 
         suspend fun syncPage(messages: List<SmsMessage>): Boolean {
             totalRead += messages.size
-            val uploadable = messages.filterNot { looksLikeOtp(it.body) }
+            val uploadable = messages.mapNotNull { message ->
+                sanitizeSmsBody(message.body)?.let { message.copy(body = it) }
+            }
             totalOtpSkipped += messages.size - uploadable.size
             val newestMillis = java.time.Instant.parse(messages.last().received_at).toEpochMilli()
             var syncedMillis = newestMillis
