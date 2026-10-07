@@ -7,6 +7,7 @@ import android.content.Context
 object SmsSyncStore {
     private const val PREFS = "sms_sync"
     private const val KEY_CURSOR = "last_synced_ms"
+    private const val KEY_BACKFILL_VERSION = "backfill_version"
 
     fun cursor(context: Context): Long? {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -19,5 +20,14 @@ object SmsSyncStore {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit { putLong(KEY_CURSOR, millis) }
         }
+    }
+
+    /** Which generation of the automatic 90-day history import has completed on this device. */
+    fun backfillVersion(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(KEY_BACKFILL_VERSION, 0)
+
+    fun markBackfilled(context: Context, version: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit { putInt(KEY_BACKFILL_VERSION, version) }
     }
 }

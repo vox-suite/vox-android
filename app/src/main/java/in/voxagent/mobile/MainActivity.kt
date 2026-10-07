@@ -69,6 +69,7 @@ import `in`.voxagent.mobile.auth.UserProfile
 import `in`.voxagent.mobile.map.MissionMapBackground
 import `in`.voxagent.mobile.sms.SmsConsentApi
 import `in`.voxagent.mobile.sms.SmsConsentStatus
+import `in`.voxagent.mobile.sms.SmsSyncStore
 import `in`.voxagent.mobile.sms.SmsSyncWorker
 import `in`.voxagent.mobile.phone.PhoneApi
 import `in`.voxagent.mobile.phone.PhoneStatus
@@ -153,6 +154,11 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
         // here actually reaches devices that already granted SMS access.
         if (smsPermissionGranted && consentStatus?.granted == true) {
             schedulePeriodicSync(activity)
+            // One automatic 90-day import per backfill version; unique work keeps a
+            // relaunch from starting a second copy while one is still running.
+            if (SmsSyncStore.backfillVersion(activity) < SmsSyncWorker.BACKFILL_VERSION) {
+                triggerBackfillSync(activity)
+            }
         } else if (consentStatus?.granted == false) {
             WorkManager.getInstance(activity).cancelUniqueWork(SmsSyncWorker.UNIQUE_WORK_NAME)
         }

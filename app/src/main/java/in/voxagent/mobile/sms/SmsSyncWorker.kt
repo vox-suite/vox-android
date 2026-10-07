@@ -88,6 +88,7 @@ class SmsSyncWorker(
                 since = java.time.Instant.parse(messages.last().received_at).toEpochMilli()
                 if (messages.size < BATCH_SIZE) break
             }
+            SmsSyncStore.markBackfilled(applicationContext, BACKFILL_VERSION)
             RemoteLog.i(TAG, "backfill finished: days=$backfillDays read=$totalRead uploaded=$totalUploaded otpSkipped=$totalOtpSkipped")
             return@withContext Result.success()
         }
@@ -113,6 +114,10 @@ class SmsSyncWorker(
         const val UNIQUE_WORK_NAME = "sms_sync"
         const val KEY_BACKFILL_DAYS = "backfill_days"
         const val BACKFILL_DAYS = 90
+
+        // Bump when SMS parsing or redaction changes so every device re-imports its last
+        // BACKFILL_DAYS once. The server de-duplicates anything it already has.
+        const val BACKFILL_VERSION = 2
         private const val DAY_MILLIS = 24L * 60 * 60 * 1000
         private const val BATCH_SIZE = 256
         private const val FIRST_SYNC_MESSAGES = 256
