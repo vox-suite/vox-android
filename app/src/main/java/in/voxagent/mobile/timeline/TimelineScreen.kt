@@ -36,6 +36,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import `in`.voxagent.mobile.net.LiveHub
+import `in`.voxagent.mobile.spans.summarize
 import `in`.voxagent.mobile.spans.Span
 import `in`.voxagent.mobile.spans.SpanCollection
 import `in`.voxagent.mobile.ui.VoxDarkScreen
@@ -63,6 +64,7 @@ fun TimelineScreen(
     val vm: TimelineViewModel =
         viewModel(factory = viewModelFactory { initializer { TimelineViewModel(token) } })
     val ui by vm.ui.collectAsState()
+    val cachedDays by `in`.voxagent.mobile.spans.SpanDayCache.entries.collectAsState()
 
     LaunchedEffect(reloadSignal) { if (reloadSignal > 0) vm.reload() }
     LaunchedEffect(ui.collections) { onCollections(ui.collections) }
@@ -86,19 +88,17 @@ fun TimelineScreen(
             CollectionChips(ui, vm)
             if (ui.error.isNotEmpty()) VoxErrorBar(ui.error, onRetry = vm::reload)
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                when (ui.mode) {
-                    ViewMode.Day -> DayGrid(ui.anchor, ui.spans, onOpenSpan)
-                    ViewMode.Week ->
-                        WeekAgenda(
-                            ui.days,
-                            ui.selectedDay,
-                            ui.spans,
-                            vm::selectDay,
-                            onOpenSpan,
-                            vm::previous,
-                            vm::next,
-                        )
-                    ViewMode.Month -> MonthGrid(ui.anchor, ui.spans, vm::openDay)
+                Column(Modifier.fillMaxSize()) {
+                    Box(Modifier.weight(1f)) { PlanningTimeline(ui.days, ui.spans, onOpenSpan, loading = ui.loading) }
+                    if (ui.mode != ViewMode.Month && ui.collectionId == null) {
+                        Row(Modifier.horizontalScroll(rememberScrollState())) {
+                            ui.days.filter { cachedDays[it]?.hasMore == true }.forEach { day ->
+                                androidx.compose.material3.TextButton(onClick = { vm.loadMore(day) }, enabled = cachedDays[day]?.loading != true) {
+                                    Text("Load more · ${day.monthValue}/${day.dayOfMonth}")
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -36,7 +36,7 @@ internal fun BoxScope.SpanSheetBackdrop(span: Span) {
                     Modifier.fillMaxSize()
                         .scale(1.15f)
                         .blur(radius = 32.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded),
-                alpha = 0.35f,
+                alpha = 0.15f,
                 blur = true,
             )
             Box(
@@ -44,8 +44,8 @@ internal fun BoxScope.SpanSheetBackdrop(span: Span) {
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                Color(0xFF0C0D10).copy(alpha = 0.55f),
-                                Color(0xFF0C0D10).copy(alpha = 0.82f),
+                                Color(0xFF0C0D10).copy(alpha = 0.75f),
+                                Color(0xFF0C0D10).copy(alpha = 0.85f),
                                 Color(0xFF0C0D10).copy(alpha = 0.98f),
                             )
                         )
@@ -57,8 +57,8 @@ internal fun BoxScope.SpanSheetBackdrop(span: Span) {
             Modifier.matchParentSize().drawBehind {
                 drawRect(
                     Brush.radialGradient(
-                        listOf(style.dot.copy(alpha = 0.35f), Color.Transparent),
-                        center = Offset(size.width, 0f),
+                        listOf(style.dot.copy(alpha = 0.18f), Color.Transparent),
+                        center = Offset(34.dp.toPx(), 38.dp.toPx()),
                         radius = size.width * 0.85f,
                     )
                 )

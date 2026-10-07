@@ -25,10 +25,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import `in`.voxagent.mobile.spans.Span
+import `in`.voxagent.mobile.spans.DaySummary
+import `in`.voxagent.mobile.spans.categoryStyle
 import `in`.voxagent.mobile.spans.monthGridDays
-import `in`.voxagent.mobile.spans.spanStyle
-import `in`.voxagent.mobile.spans.spansOnDay
 import `in`.voxagent.mobile.ui.theme.BorderSubtle
 import `in`.voxagent.mobile.ui.theme.Mist
 import `in`.voxagent.mobile.ui.theme.SmokeDark
@@ -37,7 +36,11 @@ import java.time.LocalDate
 private val WEEKDAYS = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
 
 @Composable
-fun MonthGrid(anchor: LocalDate, spans: List<Span>, onSelectDay: (LocalDate) -> Unit) {
+fun MonthGrid(
+    anchor: LocalDate,
+    counts: Map<LocalDate, DaySummary>,
+    onSelectDay: (LocalDate) -> Unit,
+) {
     val grid = remember(anchor) { monthGridDays(anchor) }
     val today = LocalDate.now()
     Column(Modifier.fillMaxSize()) {
@@ -56,7 +59,7 @@ fun MonthGrid(anchor: LocalDate, spans: List<Span>, onSelectDay: (LocalDate) -> 
         grid.chunked(7).forEach { week ->
             Row(Modifier.fillMaxWidth().weight(1f)) {
                 week.forEach { day ->
-                    val items = remember(spans, day) { spansOnDay(spans, day) }
+                    val summary = counts[day]
                     val inMonth = day.month == anchor.month
                     Column(
                         Modifier.weight(1f)
@@ -83,17 +86,17 @@ fun MonthGrid(anchor: LocalDate, spans: List<Span>, onSelectDay: (LocalDate) -> 
                             )
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                            items.take(3).forEach { s ->
+                            summary?.categories?.take(3)?.forEach { c ->
                                 Box(
                                     Modifier.size(6.dp)
                                         .clip(CircleShape)
-                                        .background(spanStyle(s).dot)
+                                        .background(categoryStyle(c.category, null).dot)
                                 )
                             }
                         }
-                        if (items.size > 3)
+                        if (summary != null)
                             Text(
-                                "+${items.size - 3}",
+                                summary.count.toString(),
                                 color = SmokeDark,
                                 fontSize = 9.sp,
                                 fontFamily = FontFamily.Monospace,

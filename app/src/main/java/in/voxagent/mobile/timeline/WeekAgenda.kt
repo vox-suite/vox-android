@@ -14,7 +14,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyColumn
+import kotlinx.coroutines.flow.first
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -61,6 +65,8 @@ fun WeekAgenda(
     onSelectSpan: (Span) -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit,
+    hasMore: Boolean = false,
+    onLoadMore: () -> Unit = {},
 ) {
     val locale = LocalLocale.current.platformLocale
     val today = LocalDate.now()
@@ -130,8 +136,19 @@ fun WeekAgenda(
         if (daySpans.isEmpty()) {
             VoxEmpty("Nothing planned")
         } else {
+            val listState = rememberLazyListState()
+            LaunchedEffect(hasMore, daySpans.size, selected) {
+                if (!hasMore) return@LaunchedEffect
+                snapshotFlow {
+                    val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                    last >= daySpans.size - 8
+                }
+                    .first { it }
+                onLoadMore()
+            }
             LazyColumn(
                 Modifier.fillMaxSize(),
+                state = listState,
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {

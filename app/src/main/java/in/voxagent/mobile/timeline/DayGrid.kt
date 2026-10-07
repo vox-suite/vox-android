@@ -33,6 +33,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -76,6 +77,9 @@ fun DayGrid(
     spans: List<Span>,
     onSelect: (Span) -> Unit,
     modifier: Modifier = Modifier,
+    hasMore: Boolean = false,
+    frontierMs: Long? = null,
+    onLoadMore: () -> Unit = {},
 ) {
     val placed = remember(spans, day) { layoutDay(spans, day) }
     val parents = remember(placed) { placed.mapNotNull { it.span.parentId }.toSet() }
@@ -100,6 +104,17 @@ fun DayGrid(
         val hour = earliest ?: if (day == LocalDate.now()) LocalDateTime.now().hour - 2 else 8
         snapshotFlow { scroll.maxValue }.first { it in 1 until Int.MAX_VALUE }
         scroll.scrollTo(with(density) { (maxOf(0, hour - 1) * HOUR_DP.toPx()).toInt() })
+    }
+
+    val screenPx = with(density) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
+    LaunchedEffect(hasMore, frontierMs, spans.size) {
+        if (!hasMore || frontierMs == null) return@LaunchedEffect
+        val hours =
+            Instant.ofEpochMilli(frontierMs).atZone(zone).let { it.hour + it.minute / 60f }
+        val frontierPx = with(density) { (HOUR_DP * hours).toPx() }
+        snapshotFlow { scroll.value }
+            .first { it + screenPx * 1.5f >= frontierPx }
+        onLoadMore()
     }
 
     Column(modifier.fillMaxSize()) {

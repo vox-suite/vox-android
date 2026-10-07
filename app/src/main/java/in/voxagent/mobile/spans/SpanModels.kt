@@ -106,3 +106,20 @@ data class SpanCollection(
     @SerialName("span_count") val spanCount: Int = 0,
     val version: Int = 0,
 )
+
+@Serializable data class CategoryCount(val category: String = "", val count: Int = 0)
+
+@Serializable
+data class DaySummary(
+    val day: String,
+    val count: Int = 0,
+    val categories: List<CategoryCount> = emptyList(),
+)
+
+@Serializable data class DayCounts(val days: List<DaySummary> = emptyList())
+
+@Serializable
+data class DayPage(
+    val items: List<Span> = emptyList(),
+    @SerialName("next_cursor") val nextCursor: String? = null,
+)

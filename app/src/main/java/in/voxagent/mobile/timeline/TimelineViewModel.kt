@@ -2,7 +2,9 @@ package `in`.voxagent.mobile.timeline
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import `in`.voxagent.mobile.spans.DaySummary
 import `in`.voxagent.mobile.spans.Span
+import `in`.voxagent.mobile.spans.SpanDayCache
 import `in`.voxagent.mobile.spans.SpanCollection
 import `in`.voxagent.mobile.spans.SpansApi
 import `in`.voxagent.mobile.spans.dayStartMs
@@ -11,6 +13,9 @@ import `in`.voxagent.mobile.spans.weekStart
 import java.time.Instant
 import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +34,9 @@ data class TimelineUi(
     val anchor: LocalDate = LocalDate.now(),
     val selectedDay: LocalDate = LocalDate.now(),
     val spans: List<Span> = emptyList(),
+    val dayCounts: Map<LocalDate, DaySummary> = emptyMap(),
+    val hasMore: Boolean = false,
+    val frontierMs: Long? = null,
     val collections: List<SpanCollection> = emptyList(),
     val collectionId: String? = null,
     val loading: Boolean = true,
@@ -39,7 +47,7 @@ data class TimelineUi(
             when (mode) {
                 ViewMode.Day -> listOf(anchor)
                 ViewMode.Week -> List(7) { anchor.plusDays(it.toLong()) }
-                ViewMode.Month -> monthGridDays(anchor)
+                ViewMode.Month -> List(anchor.lengthOfMonth()) { anchor.withDayOfMonth(1).plusDays(it.toLong()) }
             }
 
     val collection: SpanCollection?
@@ -119,21 +127,71 @@ class TimelineViewModel(private val token: () -> String?) : ViewModel() {
         val bearer = token() ?: return
         val s = _ui.value
         val days = s.days
-        val from = Instant.ofEpochMilli(dayStartMs(days.first()))
-        val to = Instant.ofEpochMilli(dayStartMs(days.last().plusDays(1)))
         loadJob?.cancel()
         _ui.update { it.copy(loading = true) }
         loadJob =
             viewModelScope.launch {
                 try {
-                    val spans = SpansApi.getSpans(bearer, from, to, s.collectionId)
-                    _ui.update { it.copy(spans = spans, loading = false, error = "") }
+                    when {
+                        s.collectionId != null -> {
+                            val from = Instant.ofEpochMilli(dayStartMs(days.first()))
+                            val to = Instant.ofEpochMilli(dayStartMs(days.last().plusDays(1)))
+                            val spans = SpansApi.getSpans(bearer, from, to, s.collectionId)
+                            _ui.update { it.copy(spans = spans, loading = false, error = "") }
+                        }
+                        s.mode == ViewMode.Month -> {
+                            val spans = SpansApi.getSpans(bearer, Instant.ofEpochMilli(dayStartMs(days.first())), Instant.ofEpochMilli(dayStartMs(days.last().plusDays(1))), null)
+                            _ui.update { it.copy(spans = spans, hasMore = false, loading = false, error = "") }
+                        }
+                        else -> {
+                            coroutineScope {
+                                days.map { day -> async { SpanDayCache.loadFirst(bearer, day) } }
+                                    .awaitAll()
+                            }
+                            publish(days)
+                        }
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     _ui.update { it.copy(loading = false, error = e.message ?: "Network error") }
                 }
             }
+    }
+
+    fun loadMore(day: LocalDate = _ui.value.selectedDay) {
+        val bearer = token() ?: return
+        val s = _ui.value
+        if (s.collectionId != null || s.mode == ViewMode.Month) return
+        val target = if (s.mode == ViewMode.Day) s.anchor else day
+        viewModelScope.launch {
+            try {
+                SpanDayCache.loadMore(bearer, target)
+                publish(s.days)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _ui.update { it.copy(error = e.message ?: "Network error") }
+            }
+        }
+    }
+
+    private fun publish(days: List<LocalDate>) {
+        val entries = SpanDayCache.entries.value
+        val seen = HashSet<String>()
+        val spans = days.flatMap { entries[it]?.items.orEmpty() }.filter { seen.add(it.id) }
+        val target = _ui.value.let { if (it.mode == ViewMode.Day) it.anchor else it.selectedDay }
+        val entry = entries[target]
+        _ui.update {
+            it.copy(
+                spans = spans,
+                dayCounts = SpanDayCache.counts.value,
+                hasMore = entry?.hasMore == true,
+                frontierMs = entry?.items?.lastOrNull()?.startMs,
+                loading = false,
+                error = "",
+            )
+        }
     }
 
     private fun loadCollections() {
