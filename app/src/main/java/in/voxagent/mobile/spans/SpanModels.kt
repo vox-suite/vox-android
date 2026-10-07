@@ -1,5 +1,6 @@
 package `in`.voxagent.mobile.spans
 
+import java.time.OffsetDateTime
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
@@ -7,7 +8,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
-import java.time.OffsetDateTime
 
 @Serializable
 enum class SpanStatus {
@@ -18,15 +18,19 @@ enum class SpanStatus {
     @SerialName("failed") Failed,
     @SerialName("cancelled") Cancelled;
 
-    val wire: String get() = when (this) {
-        Planned -> "planned"
-        Active -> "active"
-        WaitingUser -> "waiting_user"
-        Done -> "done"
-        Failed -> "failed"
-        Cancelled -> "cancelled"
-    }
-    val label: String get() = wire.replace('_', ' ')
+    val wire: String
+        get() =
+            when (this) {
+                Planned -> "planned"
+                Active -> "active"
+                WaitingUser -> "waiting_user"
+                Done -> "done"
+                Failed -> "failed"
+                Cancelled -> "cancelled"
+            }
+
+    val label: String
+        get() = wire.replace('_', ' ')
 }
 
 @Serializable
@@ -35,11 +39,13 @@ enum class ExecutionType {
     @SerialName("interactive") Interactive,
     @SerialName("manual_human") ManualHuman;
 
-    val wire: String get() = when (this) {
-        Autonomous -> "autonomous"
-        Interactive -> "interactive"
-        ManualHuman -> "manual_human"
-    }
+    val wire: String
+        get() =
+            when (this) {
+                Autonomous -> "autonomous"
+                Interactive -> "interactive"
+                ManualHuman -> "manual_human"
+            }
 }
 
 @Serializable
@@ -61,11 +67,32 @@ data class Span(
     @SerialName("created_at") val createdAt: String? = null,
     val version: Int = 0,
 ) {
-    val startMs: Long? get() = startAt?.let { runCatching { OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull() }
-    val endMs: Long? get() = endAt?.let { runCatching { OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull() }
-    val createdMs: Long? get() = createdAt?.let { runCatching { OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull() }
-    val amount: Double? get() = ((data as? JsonObject)?.get("amount") as? JsonPrimitive)?.takeIf { !it.isString }?.doubleOrNull
-    val currency: String get() = ((data as? JsonObject)?.get("currency") as? JsonPrimitive)?.contentOrNull ?: "INR"
+    val startMs: Long?
+        get() =
+            startAt?.let {
+                runCatching { OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull()
+            }
+
+    val endMs: Long?
+        get() =
+            endAt?.let {
+                runCatching { OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull()
+            }
+
+    val createdMs: Long?
+        get() =
+            createdAt?.let {
+                runCatching { OffsetDateTime.parse(it).toInstant().toEpochMilli() }.getOrNull()
+            }
+
+    val amount: Double?
+        get() =
+            ((data as? JsonObject)?.get("amount") as? JsonPrimitive)
+                ?.takeIf { !it.isString }
+                ?.doubleOrNull
+
+    val currency: String
+        get() = ((data as? JsonObject)?.get("currency") as? JsonPrimitive)?.contentOrNull ?: "INR"
 }
 
 @Serializable

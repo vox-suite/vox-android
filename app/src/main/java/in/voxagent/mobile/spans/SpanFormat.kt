@@ -1,11 +1,6 @@
 package `in`.voxagent.mobile.spans
 
 import androidx.compose.ui.graphics.Color
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.contentOrNull
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.format.DateTimeFormatter
@@ -14,34 +9,103 @@ import java.util.Currency
 import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.sin
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
 
 data class CategoryStyle(val bg: Color, val border: Color, val dot: Color, val subtext: Color)
 
 private fun rgba(r: Int, g: Int, b: Int, a: Float) = Color(r / 255f, g / 255f, b / 255f, a)
+
 private fun hex(value: Long) = Color(0xFF000000 or value)
 
-private fun style(bg: Color, border: Color, dot: Color, sub: Color) = CategoryStyle(bg, border, dot, sub)
+private fun style(bg: Color, border: Color, dot: Color, sub: Color) =
+    CategoryStyle(bg, border, dot, sub)
 
-private val Violet = style(rgba(35, 25, 72, .88f), rgba(139, 92, 246, .35f), hex(0xa78bfa), rgba(196, 181, 253, .75f))
-private val Blue = style(rgba(20, 38, 70, .88f), rgba(59, 130, 246, .35f), hex(0x60a5fa), rgba(147, 197, 253, .75f))
-private val Green = style(rgba(13, 48, 30, .88f), rgba(16, 185, 129, .35f), hex(0x34d399), rgba(110, 231, 183, .75f))
-private val Rose = style(rgba(60, 20, 38, .88f), rgba(244, 63, 94, .35f), hex(0xfb7185), rgba(253, 164, 175, .75f))
-private val Amber = style(rgba(58, 32, 10, .88f), rgba(245, 158, 11, .35f), hex(0xfbbf24), rgba(253, 230, 138, .75f))
-private val Orange = style(rgba(56, 26, 14, .88f), rgba(249, 115, 22, .35f), hex(0xfb923c), rgba(254, 215, 170, .75f))
-private val Purple = style(rgba(42, 18, 76, .88f), rgba(168, 85, 247, .38f), hex(0xc084fc), rgba(233, 213, 255, .75f))
-private val Slate = style(rgba(24, 26, 32, .9f), rgba(148, 163, 184, .25f), hex(0x94a3b8), rgba(203, 213, 225, .75f))
-private val Fallback = style(rgba(26, 30, 42, .88f), rgba(100, 116, 139, .3f), hex(0x94a3b8), rgba(255, 255, 255, .65f))
+private val Violet =
+    style(
+        rgba(35, 25, 72, .88f),
+        rgba(139, 92, 246, .35f),
+        hex(0xa78bfa),
+        rgba(196, 181, 253, .75f),
+    )
+private val Blue =
+    style(
+        rgba(20, 38, 70, .88f),
+        rgba(59, 130, 246, .35f),
+        hex(0x60a5fa),
+        rgba(147, 197, 253, .75f),
+    )
+private val Green =
+    style(
+        rgba(13, 48, 30, .88f),
+        rgba(16, 185, 129, .35f),
+        hex(0x34d399),
+        rgba(110, 231, 183, .75f),
+    )
+private val Rose =
+    style(rgba(60, 20, 38, .88f), rgba(244, 63, 94, .35f), hex(0xfb7185), rgba(253, 164, 175, .75f))
+private val Amber =
+    style(
+        rgba(58, 32, 10, .88f),
+        rgba(245, 158, 11, .35f),
+        hex(0xfbbf24),
+        rgba(253, 230, 138, .75f),
+    )
+private val Orange =
+    style(
+        rgba(56, 26, 14, .88f),
+        rgba(249, 115, 22, .35f),
+        hex(0xfb923c),
+        rgba(254, 215, 170, .75f),
+    )
+private val Purple =
+    style(
+        rgba(42, 18, 76, .88f),
+        rgba(168, 85, 247, .38f),
+        hex(0xc084fc),
+        rgba(233, 213, 255, .75f),
+    )
+private val Slate =
+    style(
+        rgba(24, 26, 32, .9f),
+        rgba(148, 163, 184, .25f),
+        hex(0x94a3b8),
+        rgba(203, 213, 225, .75f),
+    )
+private val Fallback =
+    style(
+        rgba(26, 30, 42, .88f),
+        rgba(100, 116, 139, .3f),
+        hex(0x94a3b8),
+        rgba(255, 255, 255, .65f),
+    )
 
-private val CATEGORY_STYLES = mapOf(
-    "meeting" to Violet, "call" to Violet, "reminder" to Violet,
-    "commute" to Blue, "travel" to Blue, "driving" to Blue,
-    "cycling" to Green, "ride" to Green, "running" to Green, "walking" to Green,
-    "visit" to Rose, "appointment" to Rose,
-    "expense" to Amber, "payment" to Amber, "delivery" to Amber,
-    "meal" to Orange, "food" to Orange,
-    "game" to Purple, "gaming" to Purple,
-    "todo" to Slate,
-)
+private val CATEGORY_STYLES =
+    mapOf(
+        "meeting" to Violet,
+        "call" to Violet,
+        "reminder" to Violet,
+        "commute" to Blue,
+        "travel" to Blue,
+        "driving" to Blue,
+        "cycling" to Green,
+        "ride" to Green,
+        "running" to Green,
+        "walking" to Green,
+        "visit" to Rose,
+        "appointment" to Rose,
+        "expense" to Amber,
+        "payment" to Amber,
+        "delivery" to Amber,
+        "meal" to Orange,
+        "food" to Orange,
+        "game" to Purple,
+        "gaming" to Purple,
+        "todo" to Slate,
+    )
 
 private fun oklch(l: Double, c: Double, h: Double, alpha: Float): Color {
     val a = c * cos(Math.toRadians(h))
@@ -81,76 +145,100 @@ fun categoryStyle(category: String, schemaColorToken: Int?): CategoryStyle =
 
 private val timeFormat = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withZone(zone)
 
-fun formatTime(ms: Long?): String = if (ms == null) "" else timeFormat.format(Instant.ofEpochMilli(ms))
+fun formatTime(ms: Long?): String =
+    if (ms == null) "" else timeFormat.format(Instant.ofEpochMilli(ms))
 
 fun formatMoney(amount: Double, currency: String = "INR"): String =
     runCatching {
-        NumberFormat.getCurrencyInstance().apply {
-            this.currency = Currency.getInstance(currency)
-            maximumFractionDigits = 0
-        }.format(amount)
-    }.getOrDefault("$amount $currency")
+            NumberFormat.getCurrencyInstance()
+                .apply {
+                    this.currency = Currency.getInstance(currency)
+                    maximumFractionDigits = 0
+                }
+                .format(amount)
+        }
+        .getOrDefault("$amount $currency")
 
 fun formatAmount(span: Span): String? = span.amount?.let { formatMoney(it, span.currency) }
 
-private val SpotifyStyle = style(rgba(10, 42, 24, .9f), rgba(29, 185, 84, .45f), hex(0x1db954), rgba(134, 239, 172, .75f))
-private val YouTubeStyle = style(rgba(58, 10, 16, .9f), rgba(255, 0, 51, .45f), hex(0xff0033), rgba(252, 165, 165, .8f))
-private val MapsStyle = style(rgba(12, 40, 30, .9f), rgba(52, 168, 83, .45f), hex(0x34a853), rgba(167, 243, 208, .8f))
-private val PlayStationStyle = style(rgba(8, 30, 66, .9f), rgba(0, 112, 209, .5f), hex(0x0070d1), rgba(147, 197, 253, .8f))
+private val SpotifyStyle =
+    style(rgba(10, 42, 24, .9f), rgba(29, 185, 84, .45f), hex(0x1db954), rgba(134, 239, 172, .75f))
+private val YouTubeStyle =
+    style(rgba(58, 10, 16, .9f), rgba(255, 0, 51, .45f), hex(0xff0033), rgba(252, 165, 165, .8f))
+private val MapsStyle =
+    style(rgba(12, 40, 30, .9f), rgba(52, 168, 83, .45f), hex(0x34a853), rgba(167, 243, 208, .8f))
+private val PlayStationStyle =
+    style(rgba(8, 30, 66, .9f), rgba(0, 112, 209, .5f), hex(0x0070d1), rgba(147, 197, 253, .8f))
 
-fun spanStyle(span: Span): CategoryStyle = when (span.source) {
-    "spotify" -> SpotifyStyle
-    "youtube" -> YouTubeStyle
-    "playstation" -> PlayStationStyle
-    "google_maps" -> MapsStyle
-    else -> categoryStyle(span.category, span.schemaColorToken)
-}
+fun spanStyle(span: Span): CategoryStyle =
+    when (span.source) {
+        "spotify" -> SpotifyStyle
+        "youtube" -> YouTubeStyle
+        "playstation" -> PlayStationStyle
+        "google_maps" -> MapsStyle
+        else -> categoryStyle(span.category, span.schemaColorToken)
+    }
 
 fun displayTitle(span: Span): String =
     if (span.source == "playstation") span.title.removePrefix("PlayStation: ") else span.title
 
 private fun dataObject(span: Span): JsonObject? = span.data as? JsonObject
 
-private fun providerData(span: Span): JsonObject? = dataObject(span)?.get("provider_data") as? JsonObject
+private fun providerData(span: Span): JsonObject? =
+    dataObject(span)?.get("provider_data") as? JsonObject
 
-private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
+private fun JsonObject.string(key: String): String? =
+    (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
 
-fun spanCover(span: Span): String? = when (span.source) {
-    "spotify" -> {
-        val images = (providerData(span)?.get("album") as? JsonObject)?.get("images") as? JsonArray
-        (images?.getOrNull(1) as? JsonObject)?.string("url") ?: (images?.getOrNull(0) as? JsonObject)?.string("url")
-    }
-    "playstation" -> dataObject(span)?.string("image_url")
-    "youtube" -> providerData(span)?.string("video_id")?.takeIf { it.isNotEmpty() }?.let { "https://i.ytimg.com/vi/$it/mqdefault.jpg" }
-    else -> null
-}
-
-fun spanSubtitle(span: Span): String? = when (span.source) {
-    "spotify" -> ((providerData(span)?.get("artists") as? JsonArray)
-        ?.mapNotNull { (it as? JsonObject)?.string("name") }
-        ?.joinToString(", "))?.takeIf { it.isNotEmpty() }
-    "playstation" -> dataObject(span)?.string("platform")
-    "youtube" -> when (providerData(span)?.string("action")) {
-        "watch" -> "Watched on YouTube"
-        "like" -> "Liked on YouTube"
-        "playlist_addition" -> "Added to a playlist"
+fun spanCover(span: Span): String? =
+    when (span.source) {
+        "spotify" -> {
+            val images =
+                (providerData(span)?.get("album") as? JsonObject)?.get("images") as? JsonArray
+            (images?.getOrNull(1) as? JsonObject)?.string("url")
+                ?: (images?.getOrNull(0) as? JsonObject)?.string("url")
+        }
+        "playstation" -> dataObject(span)?.string("image_url")
+        "youtube" ->
+            providerData(span)
+                ?.string("video_id")
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { "https://i.ytimg.com/vi/$it/mqdefault.jpg" }
         else -> null
     }
-    else -> null
-}
 
-fun isEstimated(span: Span): Boolean = (dataObject(span)?.get("estimated") as? JsonPrimitive)?.booleanOrNull == true
+fun spanSubtitle(span: Span): String? =
+    when (span.source) {
+        "spotify" ->
+            ((providerData(span)?.get("artists") as? JsonArray)
+                    ?.mapNotNull { (it as? JsonObject)?.string("name") }
+                    ?.joinToString(", "))
+                ?.takeIf { it.isNotEmpty() }
+        "playstation" -> dataObject(span)?.string("platform")
+        "youtube" ->
+            when (providerData(span)?.string("action")) {
+                "watch" -> "Watched on YouTube"
+                "like" -> "Liked on YouTube"
+                "playlist_addition" -> "Added to a playlist"
+                else -> null
+            }
+        else -> null
+    }
 
-/** Entries whose title, time and status the provider owns (the server rejects edits). */
-fun isProviderOwned(span: Span): Boolean = span.source in setOf("google_calendar", "spotify", "youtube", "google_maps")
+fun isEstimated(span: Span): Boolean =
+    (dataObject(span)?.get("estimated") as? JsonPrimitive)?.booleanOrNull == true
 
-fun sourceLabel(span: Span): String = when (span.source) {
-    "spotify" -> "Spotify"
-    "youtube" -> "YouTube"
-    "google_maps" -> "Google Maps"
-    "playstation" -> "PlayStation"
-    "google_calendar" -> "Google Calendar"
-    "swiggy" -> "Swiggy"
-    "zomato" -> "Zomato"
-    else -> span.source.replace('_', ' ').replaceFirstChar { it.uppercase() }
-}
+fun isProviderOwned(span: Span): Boolean =
+    span.source in setOf("google_calendar", "spotify", "youtube", "google_maps")
+
+fun sourceLabel(span: Span): String =
+    when (span.source) {
+        "spotify" -> "Spotify"
+        "youtube" -> "YouTube"
+        "google_maps" -> "Google Maps"
+        "playstation" -> "PlayStation"
+        "google_calendar" -> "Google Calendar"
+        "swiggy" -> "Swiggy"
+        "zomato" -> "Zomato"
+        else -> span.source.replace('_', ' ').replaceFirstChar { it.uppercase() }
+    }

@@ -7,17 +7,11 @@ import kotlinx.serialization.Serializable
 sealed class VoiceClientMessage {
     @Serializable
     @SerialName("turn")
-    data class Turn(
-        val conversation_id: String? = null,
-    ) : VoiceClientMessage()
+    data class Turn(val conversation_id: String? = null) : VoiceClientMessage()
 
-    @Serializable
-    @SerialName("interrupt")
-    object Interrupt : VoiceClientMessage()
+    @Serializable @SerialName("interrupt") object Interrupt : VoiceClientMessage()
 
-    @Serializable
-    @SerialName("ping")
-    object Ping : VoiceClientMessage()
+    @Serializable @SerialName("ping") object Ping : VoiceClientMessage()
 }
 
 @Serializable
@@ -38,19 +32,11 @@ sealed class VoiceServerMessage {
     @SerialName("text_delta")
     data class TextDelta(val turn_id: String, val delta: String) : VoiceServerMessage()
 
-    @Serializable
-    @SerialName("done")
-    data class Done(val turn_id: String) : VoiceServerMessage()
+    @Serializable @SerialName("done") data class Done(val turn_id: String) : VoiceServerMessage()
 
-    @Serializable
-    @SerialName("interrupted")
-    object Interrupted : VoiceServerMessage()
+    @Serializable @SerialName("interrupted") object Interrupted : VoiceServerMessage()
 
-    @Serializable
-    @SerialName("error")
-    data class Error(val message: String) : VoiceServerMessage()
+    @Serializable @SerialName("error") data class Error(val message: String) : VoiceServerMessage()
 
-    @Serializable
-    @SerialName("pong")
-    object Pong : VoiceServerMessage()
+    @Serializable @SerialName("pong") object Pong : VoiceServerMessage()
 }

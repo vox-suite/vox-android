@@ -34,7 +34,8 @@ object VoxApi {
 
     private fun errorMessage(e: VoxHttpException): String =
         runCatching {
-            val obj = VoxJson.parseToJsonElement(e.responseBody).jsonObject
-            (obj["error"] ?: obj["message"])?.jsonPrimitive?.content
-        }.getOrNull() ?: "Request failed (${e.statusCode})"
+                val obj = VoxJson.parseToJsonElement(e.responseBody).jsonObject
+                (obj["error"] ?: obj["message"])?.jsonPrimitive?.content
+            }
+            .getOrNull() ?: "Request failed (${e.statusCode})"
 }

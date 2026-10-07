@@ -24,19 +24,25 @@ class SceneSource(private val token: () -> String?, private val live: LiveSocket
     fun start() {
         if (job != null) return
         live.start()
-        job = scope.launch {
-            launch {
-                live.events.collect { event ->
-                    when (event.type) {
-                        "map_scene" -> runCatching {
-                            _scenes.tryEmit(VoxJson.decodeFromJsonElement<MapScene>(event.payload.getValue("scene")))
+        job =
+            scope.launch {
+                launch {
+                    live.events.collect { event ->
+                        when (event.type) {
+                            "map_scene" ->
+                                runCatching {
+                                    _scenes.tryEmit(
+                                        VoxJson.decodeFromJsonElement<MapScene>(
+                                            event.payload.getValue("scene")
+                                        )
+                                    )
+                                }
+                            "live_reconnected" -> refresh()
                         }
-                        "live_reconnected" -> refresh()
                     }
                 }
+                while (isActive && !refresh()) delay(RETRY_MS)
             }
-            while (isActive && !refresh()) delay(RETRY_MS)
-        }
     }
 
     fun stop() {
@@ -47,9 +53,10 @@ class SceneSource(private val token: () -> String?, private val live: LiveSocket
     private suspend fun refresh(): Boolean {
         val bearer = token() ?: return false
         return runCatching {
-            val body = VoxHttp.getJson("/v1/me/map/scene", bearer)
-            _scenes.emit(VoxJson.decodeFromString<MapScene>(body))
-        }.isSuccess
+                val body = VoxHttp.getJson("/v1/me/map/scene", bearer)
+                _scenes.emit(VoxJson.decodeFromString<MapScene>(body))
+            }
+            .isSuccess
     }
 
     private companion object {

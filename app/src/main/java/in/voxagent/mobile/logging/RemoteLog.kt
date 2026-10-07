@@ -1,12 +1,14 @@
 package `in`.voxagent.mobile.logging
 
-import androidx.core.content.edit
-import timber.log.Timber
 import android.content.Context
 import android.util.Log
+import androidx.core.content.edit
 import `in`.voxagent.mobile.BuildConfig
 import `in`.voxagent.mobile.auth.AuthManager
 import `in`.voxagent.mobile.net.VoxHttp
+import java.time.Instant
+import java.util.UUID
+import java.util.concurrent.ConcurrentLinkedQueue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -14,9 +16,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import java.time.Instant
-import java.util.UUID
-import java.util.concurrent.ConcurrentLinkedQueue
+import timber.log.Timber
 
 @Serializable
 private data class LogLine(val ts: String, val level: String, val tag: String, val message: String)
@@ -43,8 +43,9 @@ object RemoteLog {
         started = true
         val appContext = context.applicationContext
         val prefs = appContext.getSharedPreferences("remote_log", Context.MODE_PRIVATE)
-        val deviceId = prefs.getString("device_id", null)
-            ?: UUID.randomUUID().toString().also { prefs.edit { putString("device_id", it) } }
+        val deviceId =
+            prefs.getString("device_id", null)
+                ?: UUID.randomUUID().toString().also { prefs.edit { putString("device_id", it) } }
         val auth = AuthManager(appContext)
 
         scope.launch {
@@ -54,20 +55,36 @@ object RemoteLog {
                 val lines = ArrayList<LogLine>(BATCH_SIZE)
                 while (lines.size < BATCH_SIZE) lines.add(queue.poll() ?: break)
                 if (lines.isEmpty()) continue
-                val body = Json.encodeToString(
-                    LogBatch.serializer(),
-                    LogBatch("android", BuildConfig.VERSION_NAME, deviceId, lines),
-                )
+                val body =
+                    Json.encodeToString(
+                        LogBatch.serializer(),
+                        LogBatch("android", BuildConfig.VERSION_NAME, deviceId, lines),
+                    )
                 runCatching { VoxHttp.postJson("/v1/logs/batches", body, token) }
                     .onFailure { lines.reversed().forEach { queue.offer(it) } }
             }
         }
     }
 
-    fun d(tag: String, message: String, tr: Throwable? = null) { Timber.tag(tag).d(tr, message); enqueue("D", tag, message, tr) }
-    fun i(tag: String, message: String, tr: Throwable? = null) { Timber.tag(tag).i(tr, message); enqueue("I", tag, message, tr) }
-    fun w(tag: String, message: String, tr: Throwable? = null) { Timber.tag(tag).w(tr, message); enqueue("W", tag, message, tr) }
-    fun e(tag: String, message: String, tr: Throwable? = null) { Timber.tag(tag).e(tr, message); enqueue("E", tag, message, tr) }
+    fun d(tag: String, message: String, tr: Throwable? = null) {
+        Timber.tag(tag).d(tr, message)
+        enqueue("D", tag, message, tr)
+    }
+
+    fun i(tag: String, message: String, tr: Throwable? = null) {
+        Timber.tag(tag).i(tr, message)
+        enqueue("I", tag, message, tr)
+    }
+
+    fun w(tag: String, message: String, tr: Throwable? = null) {
+        Timber.tag(tag).w(tr, message)
+        enqueue("W", tag, message, tr)
+    }
+
+    fun e(tag: String, message: String, tr: Throwable? = null) {
+        Timber.tag(tag).e(tr, message)
+        enqueue("E", tag, message, tr)
+    }
 
     private fun enqueue(level: String, tag: String, message: String, tr: Throwable?) {
         val text = if (tr == null) message else "$message | ${Log.getStackTraceString(tr)}"

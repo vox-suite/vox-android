@@ -34,20 +34,21 @@ import `in`.voxagent.mobile.ui.theme.VoxFunnelDisplayFontFamily
 
 private data class PermissionDetail(val title: String, val body: String)
 
-private val smsDetails = listOf(
-    PermissionDetail(
-        "What's sent to a model",
-        "Message content is sent to an AI model (Gemini) to classify what each message is about. Nothing is sent for messages that look like one-time passcodes or verification codes — those are filtered out on this device before upload.",
-    ),
-    PermissionDetail(
-        "What's kept",
-        "Extracted events (title, category, time) appear in your Vox Timeline. Retained for $SMS_RETENTION_DAYS days by default, then automatically deleted.",
-    ),
-    PermissionDetail(
-        "Your control",
-        "Turn this off at any time. Revoking stops new messages from being read; nothing already processed is retroactively affected.",
-    ),
-)
+private val smsDetails =
+    listOf(
+        PermissionDetail(
+            "What's sent to a model",
+            "Message content is sent to an AI model (Gemini) to classify what each message is about. Nothing is sent for messages that look like one-time passcodes or verification codes — those are filtered out on this device before upload.",
+        ),
+        PermissionDetail(
+            "What's kept",
+            "Extracted events (title, category, time) appear in your Vox Timeline. Retained for $SMS_RETENTION_DAYS days by default, then automatically deleted.",
+        ),
+        PermissionDetail(
+            "Your control",
+            "Turn this off at any time. Revoking stops new messages from being read; nothing already processed is retroactively affected.",
+        ),
+    )
 
 @Composable
 fun PermissionsScreen(
@@ -68,15 +69,11 @@ fun PermissionsScreen(
     val allOn = micOn && smsOn && locationOn
     VoxDarkScreen {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
+            modifier = Modifier.fillMaxSize().padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState()),
+                modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -88,14 +85,16 @@ fun PermissionsScreen(
                         fontSize = 22.sp,
                     )
                     Text(
-                        text = "Choose what Vox can use. You can turn any of these off at any time.",
+                        text =
+                            "Choose what Vox can use. You can turn any of these off at any time.",
                         color = GraphiteDark,
                         fontSize = 13.sp,
                     )
                 }
                 PermissionRow(
                     title = "Microphone",
-                    summary = "Lets you talk to Vox by voice. Audio is only captured while a voice session is active.",
+                    summary =
+                        "Lets you talk to Vox by voice. Audio is only captured while a voice session is active.",
                     details = emptyList(),
                     checked = micOn,
                     enabled = !busy,
@@ -103,20 +102,23 @@ fun PermissionsScreen(
                 )
                 PermissionRow(
                     title = "SMS",
-                    summary = "Vox reads your text messages to spot bills, deliveries, appointments and other things that need action, and adds them to your Timeline.",
+                    summary =
+                        "Vox reads your text messages to spot bills, deliveries, appointments and other things that need action, and adds them to your Timeline.",
                     details = smsDetails,
                     checked = smsOn,
                     enabled = !busy,
                     onCheckedChange = onToggleSms,
-                    actions = if (smsOn) {
-                        listOf("Sync now" to onSyncSms, "Sync last 3 months" to onBackfillSms)
-                    } else {
-                        emptyList()
-                    },
+                    actions =
+                        if (smsOn) {
+                            listOf("Sync now" to onSyncSms, "Sync last 3 months" to onBackfillSms)
+                        } else {
+                            emptyList()
+                        },
                 )
                 PermissionRow(
                     title = "Location",
-                    summary = "Shows where you are on the Vox map while the app is open. Location is not recorded in the background.",
+                    summary =
+                        "Shows where you are on the Vox map while the app is open. Location is not recorded in the background.",
                     details = emptyList(),
                     checked = locationOn,
                     enabled = !busy,
@@ -129,12 +131,17 @@ fun PermissionsScreen(
             }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 VoxPrimaryButton(
-                    text = when {
-                        busy -> "Saving…"
-                        allOn -> "Done"
-                        else -> "Allow all"
+                    text =
+                        when {
+                            busy -> "Saving…"
+                            allOn -> "Done"
+                            else -> "Allow all"
+                        },
+                    onClick = {
+                        if (!busy) {
+                            if (allOn) onClose() else onAllowAll()
+                        }
                     },
-                    onClick = { if (!busy) { if (allOn) onClose() else onAllowAll() } },
                 )
                 if (!allOn) VoxTextButton(text = "Not now", onClick = onClose)
             }
@@ -154,9 +161,7 @@ private fun PermissionRow(
 ) {
     var expanded by remember { mutableStateOf(false) }
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .animateContentSize(),
+        modifier = Modifier.fillMaxWidth().animateContentSize(),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(
@@ -169,13 +174,14 @@ private fun PermissionRow(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
                 enabled = enabled,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Mist,
-                    checkedTrackColor = LakeBlueDark,
-                    uncheckedThumbColor = GraphiteDark,
-                    uncheckedTrackColor = Iron,
-                    uncheckedBorderColor = Iron,
-                ),
+                colors =
+                    SwitchDefaults.colors(
+                        checkedThumbColor = Mist,
+                        checkedTrackColor = LakeBlueDark,
+                        uncheckedThumbColor = GraphiteDark,
+                        uncheckedTrackColor = Iron,
+                        uncheckedBorderColor = Iron,
+                    ),
             )
         }
         Text(text = summary, color = GraphiteDark, fontSize = 13.sp)
@@ -188,7 +194,12 @@ private fun PermissionRow(
         if (expanded) {
             details.forEach { detail ->
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(text = detail.title, color = Mist, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                    Text(
+                        text = detail.title,
+                        color = Mist,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 13.sp,
+                    )
                     Text(text = detail.body, color = GraphiteDark, fontSize = 13.sp)
                 }
             }
@@ -203,12 +214,12 @@ private fun LinkText(text: String, onClick: () -> Unit) {
         color = LakeBlueDark,
         fontWeight = FontWeight.Medium,
         fontSize = 13.sp,
-        modifier = Modifier
-            .padding(vertical = 4.dp)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-            ),
+        modifier =
+            Modifier.padding(vertical = 4.dp)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClick,
+                ),
     )
 }

@@ -3,6 +3,9 @@ package `in`.voxagent.mobile.map.scene
 import android.view.Choreographer
 import `in`.voxagent.mobile.map.extrusionBeforeId
 import `in`.voxagent.mobile.map.setHighlights
+import kotlin.math.cos
+import kotlin.math.max
+import kotlin.math.min
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
@@ -22,9 +25,6 @@ import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import org.maplibre.geojson.Polygon
-import kotlin.math.cos
-import kotlin.math.max
-import kotlin.math.min
 
 private const val PIN_SOURCE = "vox-scene-pins"
 private const val ARC_SOURCE = "vox-scene-arcs"
@@ -49,7 +49,10 @@ private fun arcPath(from: List<Double>, to: List<Double>): List<Point> {
     return (0..ARC_STEPS).map { i ->
         val t = i.toDouble() / ARC_STEPS
         val u = 1 - t
-        Point.fromLngLat(u * u * x1 + 2 * u * t * cx + t * t * x2, u * u * y1 + 2 * u * t * cy + t * t * y2)
+        Point.fromLngLat(
+            u * u * x1 + 2 * u * t * cx + t * t * x2,
+            u * u * y1 + 2 * u * t * cy + t * t * y2,
+        )
     }
 }
 
@@ -64,8 +67,8 @@ private fun square(lng: Double, lat: Double): Polygon {
                 Point.fromLngLat(lng + dLng, lat + dLat),
                 Point.fromLngLat(lng - dLng, lat + dLat),
                 Point.fromLngLat(lng - dLng, lat - dLat),
-            ),
-        ),
+            )
+        )
     )
 }
 
@@ -85,81 +88,96 @@ class SceneRenderer(
     private val choreographer = Choreographer.getInstance()
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
 
-    private val frame = object : Choreographer.FrameCallback {
-        override fun doFrame(frameTimeNanos: Long) {
-            val elapsed = (System.nanoTime() - startedAt) / 1_000_000.0
-            var running = false
-            val features = arcs.map { (points, delayMs) ->
-                val progress = min(1.0, max(0.0, (elapsed - delayMs) / ARC_MS))
-                if (progress < 1.0) running = true
-                val count = max(2, kotlin.math.ceil(progress * ARC_STEPS).toInt() + 1)
-                Feature.fromGeometry(LineString.fromLngLats(if (progress > 0) points.take(count) else emptyList()))
+    private val frame =
+        object : Choreographer.FrameCallback {
+            override fun doFrame(frameTimeNanos: Long) {
+                val elapsed = (System.nanoTime() - startedAt) / 1_000_000.0
+                var running = false
+                val features =
+                    arcs.map { (points, delayMs) ->
+                        val progress = min(1.0, max(0.0, (elapsed - delayMs) / ARC_MS))
+                        if (progress < 1.0) running = true
+                        val count = max(2, kotlin.math.ceil(progress * ARC_STEPS).toInt() + 1)
+                        Feature.fromGeometry(
+                            LineString.fromLngLats(
+                                if (progress > 0) points.take(count) else emptyList()
+                            )
+                        )
+                    }
+                (map.style?.getSource(ARC_SOURCE) as? GeoJsonSource)?.setGeoJson(
+                    FeatureCollection.fromFeatures(features)
+                )
+                framing = running
+                if (running) choreographer.postFrameCallback(this)
             }
-            (map.style?.getSource(ARC_SOURCE) as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(features))
-            framing = running
-            if (running) choreographer.postFrameCallback(this)
         }
-    }
 
     fun ensure(style: Style) {
         if (style.getSource(PIN_SOURCE) != null) return
         for (id in listOf(PIN_SOURCE, ARC_SOURCE, COLUMN_SOURCE)) {
             style.addSource(GeoJsonSource(id, FeatureCollection.fromFeatures(emptyList())))
         }
-        val columns = FillExtrusionLayer("vox-scene-columns", COLUMN_SOURCE).withProperties(
-            PropertyFactory.fillExtrusionColor("#ff6363"),
-            PropertyFactory.fillExtrusionHeight(Expression.get("h")),
-            PropertyFactory.fillExtrusionBase(0f),
-            PropertyFactory.fillExtrusionOpacity(0.85f),
-        )
+        val columns =
+            FillExtrusionLayer("vox-scene-columns", COLUMN_SOURCE)
+                .withProperties(
+                    PropertyFactory.fillExtrusionColor("#ff6363"),
+                    PropertyFactory.fillExtrusionHeight(Expression.get("h")),
+                    PropertyFactory.fillExtrusionBase(0f),
+                    PropertyFactory.fillExtrusionOpacity(0.85f),
+                )
         val before = extrusionBeforeId(style)
         if (before != null) style.addLayerBelow(columns, before) else style.addLayer(columns)
         style.addLayer(
-            LineLayer("vox-scene-arcs", ARC_SOURCE).withProperties(
-                PropertyFactory.lineColor("#ff6363"),
-                PropertyFactory.lineWidth(2.5f),
-                PropertyFactory.lineOpacity(0.9f),
-                PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
-            ),
+            LineLayer("vox-scene-arcs", ARC_SOURCE)
+                .withProperties(
+                    PropertyFactory.lineColor("#ff6363"),
+                    PropertyFactory.lineWidth(2.5f),
+                    PropertyFactory.lineOpacity(0.9f),
+                    PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+                )
         )
         style.addLayer(
-            CircleLayer("vox-scene-pin-halo", PIN_SOURCE).withProperties(
-                PropertyFactory.circleRadius(14f),
-                PropertyFactory.circleColor(Expression.get("color")),
-                PropertyFactory.circleOpacity(0.25f),
-                PropertyFactory.circlePitchAlignment(Property.CIRCLE_PITCH_ALIGNMENT_MAP),
-            ),
+            CircleLayer("vox-scene-pin-halo", PIN_SOURCE)
+                .withProperties(
+                    PropertyFactory.circleRadius(14f),
+                    PropertyFactory.circleColor(Expression.get("color")),
+                    PropertyFactory.circleOpacity(0.25f),
+                    PropertyFactory.circlePitchAlignment(Property.CIRCLE_PITCH_ALIGNMENT_MAP),
+                )
         )
         style.addLayer(
-            CircleLayer("vox-scene-pin-dot", PIN_SOURCE).withProperties(
-                PropertyFactory.circleRadius(6f),
-                PropertyFactory.circleColor(Expression.get("color")),
-                PropertyFactory.circleStrokeWidth(2f),
-                PropertyFactory.circleStrokeColor("#ffffff"),
-                PropertyFactory.circlePitchAlignment(Property.CIRCLE_PITCH_ALIGNMENT_MAP),
-            ),
+            CircleLayer("vox-scene-pin-dot", PIN_SOURCE)
+                .withProperties(
+                    PropertyFactory.circleRadius(6f),
+                    PropertyFactory.circleColor(Expression.get("color")),
+                    PropertyFactory.circleStrokeWidth(2f),
+                    PropertyFactory.circleStrokeColor("#ffffff"),
+                    PropertyFactory.circlePitchAlignment(Property.CIRCLE_PITCH_ALIGNMENT_MAP),
+                )
         )
         style.addLayer(
-            SymbolLayer("vox-scene-pin-label", PIN_SOURCE).withProperties(
-                PropertyFactory.textField(Expression.get("label")),
-                PropertyFactory.textFont(arrayOf("Noto Sans Regular")),
-                PropertyFactory.textSize(12f),
-                PropertyFactory.textOffset(arrayOf(0f, 1.4f)),
-                PropertyFactory.textAnchor(Property.TEXT_ANCHOR_TOP),
-                PropertyFactory.textAllowOverlap(true),
-                PropertyFactory.textColor("#ffffff"),
-                PropertyFactory.textHaloColor("#050607"),
-                PropertyFactory.textHaloWidth(1.5f),
-            ),
+            SymbolLayer("vox-scene-pin-label", PIN_SOURCE)
+                .withProperties(
+                    PropertyFactory.textField(Expression.get("label")),
+                    PropertyFactory.textFont(arrayOf("Noto Sans Regular")),
+                    PropertyFactory.textSize(12f),
+                    PropertyFactory.textOffset(arrayOf(0f, 1.4f)),
+                    PropertyFactory.textAnchor(Property.TEXT_ANCHOR_TOP),
+                    PropertyFactory.textAllowOverlap(true),
+                    PropertyFactory.textColor("#ffffff"),
+                    PropertyFactory.textHaloColor("#050607"),
+                    PropertyFactory.textHaloWidth(1.5f),
+                )
         )
     }
 
     private var ready = false
     private var pendingHighlights = false
-    private val idleListener = MapView.OnDidBecomeIdleListener {
-        ready = true
-        if (pendingHighlights) paintHighlights()
-    }
+    private val idleListener =
+        MapView.OnDidBecomeIdleListener {
+            ready = true
+            if (pendingHighlights) paintHighlights()
+        }
 
     init {
         mapView.addOnDidBecomeIdleListener(idleListener)
@@ -190,15 +208,23 @@ class SceneRenderer(
 
         (style.getSource(PIN_SOURCE) as? GeoJsonSource)?.setGeoJson(
             FeatureCollection.fromFeatures(
-                scene.pins.filter { valid(it.lng, it.lat) }.map {
-                    Feature.fromGeometry(Point.fromLngLat(it.lng, it.lat)).apply {
-                        addStringProperty("id", it.id)
-                        addStringProperty("label", listOfNotNull(it.label, it.state).joinToString(" · "))
-                        addStringProperty("color", PIN_COLORS[it.kind] ?: PIN_COLORS.getValue("place"))
-                        addStringProperty("state", it.state ?: "")
+                scene.pins
+                    .filter { valid(it.lng, it.lat) }
+                    .map {
+                        Feature.fromGeometry(Point.fromLngLat(it.lng, it.lat)).apply {
+                            addStringProperty("id", it.id)
+                            addStringProperty(
+                                "label",
+                                listOfNotNull(it.label, it.state).joinToString(" · "),
+                            )
+                            addStringProperty(
+                                "color",
+                                PIN_COLORS[it.kind] ?: PIN_COLORS.getValue("place"),
+                            )
+                            addStringProperty("state", it.state ?: "")
+                        }
                     }
-                },
-            ),
+            )
         )
 
         val columns = scene.columns.filter { valid(it.lng, it.lat) }
@@ -207,20 +233,30 @@ class SceneRenderer(
             FeatureCollection.fromFeatures(
                 columns.map {
                     Feature.fromGeometry(square(it.lng, it.lat)).apply {
-                        addNumberProperty("h", COLUMN_MIN_H + (COLUMN_MAX_H - COLUMN_MIN_H) * (it.value / maxValue))
+                        addNumberProperty(
+                            "h",
+                            COLUMN_MIN_H + (COLUMN_MAX_H - COLUMN_MIN_H) * (it.value / maxValue),
+                        )
                     }
-                },
-            ),
+                }
+            )
         )
 
-        arcs = scene.arcs
-            .filter { it.from.size == 2 && it.to.size == 2 && valid(it.from[0], it.from[1]) && valid(it.to[0], it.to[1]) }
-            .map { arcPath(it.from, it.to) to it.delayMs }
+        arcs =
+            scene.arcs
+                .filter {
+                    it.from.size == 2 &&
+                        it.to.size == 2 &&
+                        valid(it.from[0], it.from[1]) &&
+                        valid(it.to[0], it.to[1])
+                }
+                .map { arcPath(it.from, it.to) to it.delayMs }
         if (changed) startedAt = System.nanoTime()
         choreographer.removeFrameCallback(frame)
         choreographer.postFrameCallback(frame)
 
-        highlights = scene.highlights.filter { valid(it.lng, it.lat) }.map { LatLng(it.lat, it.lng) }
+        highlights =
+            scene.highlights.filter { valid(it.lng, it.lat) }.map { LatLng(it.lat, it.lng) }
         paintHighlights()
 
         if (scene.isActive != active) {
@@ -237,7 +273,7 @@ class SceneRenderer(
                         .zoom(camera.zoom ?: 16.0)
                         .tilt(camera.pitch ?: 60.0)
                         .bearing(camera.bearing ?: map.cameraPosition.bearing)
-                        .build(),
+                        .build()
                 ),
                 camera.durationMs ?: 2500,
             )

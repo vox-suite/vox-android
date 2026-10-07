@@ -11,7 +11,8 @@ const val SLOT_MINUTES = 15
 private const val SLOTS_PER_DAY = 24 * 60 / SLOT_MINUTES
 private const val CHILD_HEADER_MINUTES = 22.0
 
-val zone: ZoneId get() = ZoneId.systemDefault()
+val zone: ZoneId
+    get() = ZoneId.systemDefault()
 
 data class PlacedSpan(
     val span: Span,
@@ -46,13 +47,22 @@ fun isAllDay(span: Span): Boolean {
 fun spansOnDay(spans: List<Span>, day: LocalDate): List<Span> {
     val start = dayStartMs(day)
     val end = dayStartMs(day.plusDays(1))
-    return spans.filter { span ->
-        val b = bounds(span) ?: return@filter false
-        if (b.first == b.second) b.first in start until end else b.second > start && b.first < end
-    }.sortedWith(compareByDescending<Span> { isAllDay(it) }.thenBy { it.startMs ?: 0L })
+    return spans
+        .filter { span ->
+            val b = bounds(span) ?: return@filter false
+            if (b.first == b.second) b.first in start until end
+            else b.second > start && b.first < end
+        }
+        .sortedWith(compareByDescending<Span> { isAllDay(it) }.thenBy { it.startMs ?: 0L })
 }
 
-private fun pack(nodes: List<Node>, left: Double, width: Double, depth: Int, out: MutableList<PlacedSpan>) {
+private fun pack(
+    nodes: List<Node>,
+    left: Double,
+    width: Double,
+    depth: Int,
+    out: MutableList<PlacedSpan>,
+) {
     val instants = nodes.filter { it.instant }
     val durations = nodes.filter { !it.instant }
     val sorted = durations.sortedWith(compareBy<Node> { it.start }.thenByDescending { it.end })
@@ -93,10 +103,19 @@ private fun pack(nodes: List<Node>, left: Double, width: Double, depth: Int, out
     }
     flush()
 
-    // Instant entries belong to one of the 96 quarter-hour slots; a slot's entries sit side by side.
     for (node in instants.sortedBy { it.start }) {
         val slot = minOf((node.start / SLOT_MINUTES).toInt(), SLOTS_PER_DAY - 1)
-        out += PlacedSpan(node.span, (slot * SLOT_MINUTES).toDouble(), SLOT_MINUTES.toDouble(), left, width, depth, true, slot)
+        out +=
+            PlacedSpan(
+                node.span,
+                (slot * SLOT_MINUTES).toDouble(),
+                SLOT_MINUTES.toDouble(),
+                left,
+                width,
+                depth,
+                true,
+                slot,
+            )
         pack(node.children, left, width, depth + 1, out)
     }
 }
@@ -110,12 +129,14 @@ fun layoutDay(spans: List<Span>, day: LocalDate): List<PlacedSpan> {
         if (isAllDay(span)) continue
         val (start, end) = b
         val instant = end == start
-        val outside = if (instant) start < dayStart || start >= dayEnd else end <= dayStart || start >= dayEnd
+        val outside =
+            if (instant) start < dayStart || start >= dayEnd else end <= dayStart || start >= dayEnd
         if (outside) continue
         val s = (maxOf(start, dayStart) - dayStart).toDouble() / MINUTE
         val e = (minOf(end, dayEnd) - dayStart).toDouble() / MINUTE
         val top = if (instant) s else minOf(s, DAY_MINUTES - MIN_BLOCK_MINUTES)
-        nodes[span.id] = Node(span, top, if (instant) top else maxOf(e, top + MIN_BLOCK_MINUTES), instant)
+        nodes[span.id] =
+            Node(span, top, if (instant) top else maxOf(e, top + MIN_BLOCK_MINUTES), instant)
     }
     val roots = mutableListOf<Node>()
     for (node in nodes.values) {
@@ -135,12 +156,19 @@ fun layoutAllDay(spans: List<Span>, days: List<LocalDate>): List<AllDayRow> {
     val dayMs = DAY_MINUTES * MINUTE
     val rowEnds = mutableListOf<Int>()
     val out = mutableListOf<AllDayRow>()
-    val items = spans.filter(::isAllDay).mapNotNull { span ->
-        val (start, end) = bounds(span)!!
-        val startCol = maxOf(0L, Math.floorDiv(start - first, dayMs)).toInt()
-        val endCol = minOf((days.size - 1).toLong(), Math.floorDiv(end - 1 - first, dayMs)).toInt()
-        if (endCol >= 0 && startCol < days.size && startCol <= endCol) Triple(span, startCol, endCol) else null
-    }.sortedBy { it.second }
+    val items =
+        spans
+            .filter(::isAllDay)
+            .mapNotNull { span ->
+                val (start, end) = bounds(span)!!
+                val startCol = maxOf(0L, Math.floorDiv(start - first, dayMs)).toInt()
+                val endCol =
+                    minOf((days.size - 1).toLong(), Math.floorDiv(end - 1 - first, dayMs)).toInt()
+                if (endCol >= 0 && startCol < days.size && startCol <= endCol)
+                    Triple(span, startCol, endCol)
+                else null
+            }
+            .sortedBy { it.second }
     for ((span, startCol, endCol) in items) {
         var row = rowEnds.indexOfFirst { it < startCol }
         if (row == -1) {

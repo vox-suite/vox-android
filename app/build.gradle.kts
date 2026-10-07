@@ -21,8 +21,9 @@ android {
         applicationId = "in.voxagent.mobile"
         minSdk = 26
         targetSdk = 37
-        versionCode = 51
-        versionName = "0.2.02"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        versionCode = 53
+        versionName = "0.3.01"
 
         buildConfigField(
             "String",
@@ -74,6 +75,12 @@ android {
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation(platform("androidx.compose:compose-bom:2026.09.00"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
     implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
@@ -101,6 +108,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("androidx.security:security-crypto:1.1.0")
     implementation("javazoom:jlayer:1.0.1")
-    //noinspection GradleDependency
+
     implementation("dev.chrisbanes.haze:haze:1.5.3")
 }

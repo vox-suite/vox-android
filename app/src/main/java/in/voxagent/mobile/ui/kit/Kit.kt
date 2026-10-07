@@ -40,28 +40,36 @@ fun <T> VoxSegmented(
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = modifier
-            .height(36.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(Obsidian)
-            .border(BorderStroke(1.dp, BorderSubtle), RoundedCornerShape(10.dp))
-            .padding(2.dp),
+        modifier =
+            modifier
+                .height(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Obsidian)
+                .border(BorderStroke(1.dp, BorderSubtle), RoundedCornerShape(10.dp))
+                .padding(2.dp)
     ) {
         options.forEach { (value, label) ->
             val on = value == selected
             Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(32.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (on) BorderSubtle else Color.Transparent)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) { onSelect(value) },
+                modifier =
+                    Modifier.weight(1f)
+                        .height(32.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (on) BorderSubtle else Color.Transparent)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) {
+                            onSelect(value)
+                        },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(label, color = if (on) Mist else GraphiteDark, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    label,
+                    color = if (on) Mist else GraphiteDark,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                )
             }
         }
     }
@@ -70,12 +78,20 @@ fun <T> VoxSegmented(
 @Composable
 fun VoxChip(text: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(50))
-            .background(if (selected) BorderSubtle else Color.Transparent)
-            .border(BorderStroke(1.dp, if (selected) Mist.copy(alpha = 0.5f) else BorderSubtle), RoundedCornerShape(50))
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+        modifier =
+            modifier
+                .clip(RoundedCornerShape(50))
+                .background(if (selected) BorderSubtle else Color.Transparent)
+                .border(
+                    BorderStroke(1.dp, if (selected) Mist.copy(alpha = 0.5f) else BorderSubtle),
+                    RoundedCornerShape(50),
+                )
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClick,
+                )
+                .padding(horizontal = 12.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(text, color = if (selected) Mist else GraphiteDark, fontSize = 12.sp)
@@ -85,10 +101,11 @@ fun VoxChip(text: String, selected: Boolean, modifier: Modifier = Modifier, onCl
 @Composable
 fun VoxErrorBar(message: String, onRetry: () -> Unit, modifier: Modifier = Modifier) {
     Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(Obsidian)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(Obsidian)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -98,9 +115,13 @@ fun VoxErrorBar(message: String, onRetry: () -> Unit, modifier: Modifier = Modif
             color = Mist,
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
-            modifier = Modifier
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onRetry)
-                .padding(start = 12.dp),
+            modifier =
+                Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onRetry,
+                    )
+                    .padding(start = 12.dp),
         )
     }
 }
@@ -112,6 +133,12 @@ fun VoxEmpty(title: String, modifier: Modifier = Modifier) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text(title, color = SmokeDark, fontSize = 13.sp, textAlign = TextAlign.Center, fontFamily = FontFamily.Monospace)
+        Text(
+            title,
+            color = SmokeDark,
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center,
+            fontFamily = FontFamily.Monospace,
+        )
     }
 }

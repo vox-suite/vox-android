@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -34,12 +35,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import `in`.voxagent.mobile.spans.Span
-import `in`.voxagent.mobile.spans.displayTitle
 import `in`.voxagent.mobile.spans.SpanStatus
-import `in`.voxagent.mobile.spans.spanStyle
+import `in`.voxagent.mobile.spans.displayTitle
 import `in`.voxagent.mobile.spans.formatAmount
 import `in`.voxagent.mobile.spans.formatTime
 import `in`.voxagent.mobile.spans.isAllDay
+import `in`.voxagent.mobile.spans.spanStyle
 import `in`.voxagent.mobile.spans.spansOnDay
 import `in`.voxagent.mobile.ui.kit.CategoryIndicator
 import `in`.voxagent.mobile.ui.kit.VoxEmpty
@@ -50,7 +51,6 @@ import `in`.voxagent.mobile.ui.theme.Obsidian
 import `in`.voxagent.mobile.ui.theme.SmokeDark
 import java.time.LocalDate
 import java.time.format.TextStyle
-import java.util.Locale
 
 @Composable
 fun WeekAgenda(
@@ -62,6 +62,7 @@ fun WeekAgenda(
     onPrev: () -> Unit,
     onNext: () -> Unit,
 ) {
+    val locale = LocalLocale.current.platformLocale
     val today = LocalDate.now()
     val daySpans = remember(spans, selected) { spansOnDay(spans, selected) }
     Column(
@@ -73,27 +74,55 @@ fun WeekAgenda(
                     dx = 0f
                 },
                 onDragCancel = { dx = 0f },
-            ) { _, delta -> dx += delta }
-        },
+            ) { _, delta ->
+                dx += delta
+            }
+        }
     ) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
             days.forEach { day ->
                 val isToday = day == today
                 val isSel = day == selected
                 val has = spansOnDay(spans, day).isNotEmpty()
                 Column(
-                    Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).clickable { onSelectDay(day) }.padding(vertical = 6.dp),
+                    Modifier.weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onSelectDay(day) }
+                        .padding(vertical = 6.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Text(day.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault()).uppercase(), color = SmokeDark, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                    Text(
+                        day.dayOfWeek.getDisplayName(TextStyle.SHORT, locale).uppercase(),
+                        color = SmokeDark,
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
                     Box(
-                        Modifier.size(34.dp).clip(CircleShape).background(if (isSel) Mist else if (isToday) BorderSubtle else Color.Transparent),
+                        Modifier.size(34.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isSel) Mist
+                                else if (isToday) BorderSubtle else Color.Transparent
+                            ),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(day.dayOfMonth.toString(), color = if (isSel) Obsidian else Mist, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace)
+                        Text(
+                            day.dayOfMonth.toString(),
+                            color = if (isSel) Obsidian else Mist,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace,
+                        )
                     }
-                    Box(Modifier.size(5.dp).clip(CircleShape).background(if (has) GraphiteDark else Color.Transparent))
+                    Box(
+                        Modifier.size(5.dp)
+                            .clip(CircleShape)
+                            .background(if (has) GraphiteDark else Color.Transparent)
+                    )
                 }
             }
         }
@@ -101,7 +130,11 @@ fun WeekAgenda(
         if (daySpans.isEmpty()) {
             VoxEmpty("Nothing planned")
         } else {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 items(daySpans, key = { it.id }) { span -> AgendaRow(span, onSelectSpan) }
             }
         }
@@ -114,23 +147,60 @@ private fun AgendaRow(span: Span, onSelect: (Span) -> Unit) {
     val muted = span.status == SpanStatus.Cancelled
     val amount = formatAmount(span)
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(style.bg).border(1.dp, style.border, RoundedCornerShape(12.dp)).clickable { onSelect(span) }.padding(12.dp),
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(style.bg)
+            .border(1.dp, style.border, RoundedCornerShape(12.dp))
+            .clickable { onSelect(span) }
+            .padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.width(74.dp)) {
             if (isAllDay(span)) {
-                Text("All day", color = style.subtext, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                Text(
+                    "All day",
+                    color = style.subtext,
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                )
             } else {
-                Text(formatTime(span.startMs), color = style.subtext, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-                span.endMs?.let { Text(formatTime(it), color = SmokeDark, fontSize = 10.sp, fontFamily = FontFamily.Monospace) }
+                Text(
+                    formatTime(span.startMs),
+                    color = style.subtext,
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                )
+                span.endMs?.let {
+                    Text(
+                        formatTime(it),
+                        color = SmokeDark,
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
             }
         }
         Column(Modifier.weight(1f)) {
-            Text(displayTitle(span), color = Mist, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis, textDecoration = if (muted) TextDecoration.LineThrough else null)
-            if (span.status != SpanStatus.Planned) Text(span.status.label, color = GraphiteDark, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            Text(
+                displayTitle(span),
+                color = Mist,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textDecoration = if (muted) TextDecoration.LineThrough else null,
+            )
+            if (span.status != SpanStatus.Planned)
+                Text(
+                    span.status.label,
+                    color = GraphiteDark,
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                )
         }
-        if (amount != null) Text(amount, color = Mist, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+        if (amount != null)
+            Text(amount, color = Mist, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
         CategoryIndicator(span, style.dot, dot = 8.dp)
     }
 }

@@ -6,7 +6,6 @@ import `in`.voxagent.mobile.net.VoxHttpException
 import `in`.voxagent.mobile.net.VoxJson
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -22,7 +21,10 @@ object ConnectionsApi {
         return VoxJson.decodeFromString(ListSerializer(ConnectionItem.serializer()), json)
     }
 
-    suspend fun startConnection(token: String, req: StartConnectionRequest): StartConnectionResponse {
+    suspend fun startConnection(
+        token: String,
+        req: StartConnectionRequest,
+    ): StartConnectionResponse {
         val body = VoxJson.encodeToString(req)
         val json = post("/v1/me/connections/start", body, token)
         return VoxJson.decodeFromString(StartConnectionResponse.serializer(), json)
@@ -60,10 +62,12 @@ object ConnectionsApi {
         try {
             VoxHttp.postJson(path, body, token)
         } catch (e: VoxHttpException) {
-            val msg = runCatching {
-                val obj = VoxJson.parseToJsonElement(e.responseBody).jsonObject
-                (obj["error"] ?: obj["message"])?.jsonPrimitive?.content
-            }.getOrNull() ?: "Connection request failed (${e.statusCode})"
+            val msg =
+                runCatching {
+                        val obj = VoxJson.parseToJsonElement(e.responseBody).jsonObject
+                        (obj["error"] ?: obj["message"])?.jsonPrimitive?.content
+                    }
+                    .getOrNull() ?: "Connection request failed (${e.statusCode})"
             throw ApiException(e.statusCode, msg)
         }
 }

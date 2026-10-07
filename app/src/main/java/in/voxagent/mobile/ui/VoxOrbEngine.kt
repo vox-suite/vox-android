@@ -9,13 +9,6 @@ import kotlin.math.round
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-/**
- * Kotlin port of vox-bridge/assets/thinking-orb-engine.js's `frameRibbon`,
- * resolved for state="composing" (idle) at engine size 64 — the same
- * animation vox-desktop's sign-in orb uses. Values below (lanes=3, segs=44,
- * ghostN=38, rBase=0.935, rDepth=1.445, bandMul=3.9) are PRESETS.ribbon[64]
- * with the "composing" count/size scaling already baked in.
- */
 internal object VoxOrbEngine {
     const val SPEED = 2.34f
     private const val ENGINE_SIZE = 64f
@@ -31,7 +24,14 @@ internal object VoxOrbEngine {
     private const val CAM_TILT = 0.3f
     private const val TA = 0.55f
 
-    data class Dot(val x: Float, val y: Float, val z: Float, val r: Float, val white: Float, val alpha: Float)
+    data class Dot(
+        val x: Float,
+        val y: Float,
+        val z: Float,
+        val r: Float,
+        val white: Float,
+        val alpha: Float,
+    )
 
     private fun fibDir(i: Int, n: Int): Triple<Float, Float, Float> {
         val golden = PI.toFloat() * (3f - sqrt(5f))
@@ -41,8 +41,13 @@ internal object VoxOrbEngine {
         return Triple(rad * cos(a), y, rad * sin(a))
     }
 
-    /** yaw/tilt are held constant here (spin=0 in the "composing" preset). */
-    private class Projector(yaw: Float, tilt: Float, val cx: Float, val cy: Float, val scale: Float) {
+    private class Projector(
+        yaw: Float,
+        tilt: Float,
+        val cx: Float,
+        val cy: Float,
+        val scale: Float,
+    ) {
         private val st = sin(tilt)
         private val ct = cos(tilt)
         private val sy = sin(yaw)
@@ -57,7 +62,6 @@ internal object VoxOrbEngine {
         }
     }
 
-    /** [t] is the JS engine's `sim` accumulator: elapsed seconds * SPEED. */
     fun frameRibbon(t: Float): List<Dot> {
         val cx = ENGINE_SIZE / 2f
         val cy = ENGINE_SIZE / 2f
@@ -74,8 +78,6 @@ internal object VoxOrbEngine {
             dots.add(Dot(px, py, z, 0.8f * rs, 0.78f, 0.1f + 0.22f * depth))
         }
 
-        // faceOn is unset for "ribbon" (only "ring" sets it) — camera plane
-        // (ux,uy,uz)/(vx,vy,vz)/(nx,ny,nz) below is constant since spin=0.
         val ux = 1f
         val uy = 0f
         val uz = 0f
@@ -92,7 +94,9 @@ internal object VoxOrbEngine {
             val edge = abs(w - (lanes - 1) / 2f) / max(1f, (lanes - 1) / 2f)
             for (k in 0 until SEGS) {
                 val a = k / SEGS.toFloat() * 2f * PI.toFloat()
-                val wob = (0.16f * sin(a * 3 - t * 1.7f + w * 0.22f) + 0.07f * sin(a * 5 + t * 1.1f)) * WOB_MUL
+                val wob =
+                    (0.16f * sin(a * 3 - t * 1.7f + w * 0.22f) + 0.07f * sin(a * 5 + t * 1.1f)) *
+                        WOB_MUL
                 val off = laneOff + wob
                 val x = ux * cos(a) + vx * sin(a) + nx * off
                 val y = uy * cos(a) + vy * sin(a) + ny * off
@@ -108,7 +112,7 @@ internal object VoxOrbEngine {
                         r = (R_BASE + R_DEPTH * depth) * (1f - 0.25f * edge) * rs,
                         white = 0.52f - 0.44f * depth + 0.18f * edge,
                         alpha = 0.4f + 0.6f * depth,
-                    ),
+                    )
                 )
             }
         }

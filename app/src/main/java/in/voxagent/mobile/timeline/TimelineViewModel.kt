@@ -8,6 +8,8 @@ import `in`.voxagent.mobile.spans.SpansApi
 import `in`.voxagent.mobile.spans.dayStartMs
 import `in`.voxagent.mobile.spans.monthGridDays
 import `in`.voxagent.mobile.spans.weekStart
+import java.time.Instant
+import java.time.LocalDate
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,10 +17,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.time.Instant
-import java.time.LocalDate
 
-enum class ViewMode { Day, Week, Month }
+enum class ViewMode {
+    Day,
+    Week,
+    Month,
+}
 
 data class TimelineUi(
     val mode: ViewMode = ViewMode.Day,
@@ -31,12 +35,15 @@ data class TimelineUi(
     val error: String = "",
 ) {
     val days: List<LocalDate>
-        get() = when (mode) {
-            ViewMode.Day -> listOf(anchor)
-            ViewMode.Week -> List(7) { anchor.plusDays(it.toLong()) }
-            ViewMode.Month -> monthGridDays(anchor)
-        }
-    val collection: SpanCollection? get() = collections.firstOrNull { it.id == collectionId }
+        get() =
+            when (mode) {
+                ViewMode.Day -> listOf(anchor)
+                ViewMode.Week -> List(7) { anchor.plusDays(it.toLong()) }
+                ViewMode.Month -> monthGridDays(anchor)
+            }
+
+    val collection: SpanCollection?
+        get() = collections.firstOrNull { it.id == collectionId }
 }
 
 class TimelineViewModel(private val token: () -> String?) : ViewModel() {
@@ -51,13 +58,15 @@ class TimelineViewModel(private val token: () -> String?) : ViewModel() {
 
     fun setMode(mode: ViewMode) {
         _ui.update { s ->
-            val anchor = when (mode) {
-                ViewMode.Day -> s.anchor
-                ViewMode.Week -> weekStart(s.anchor)
-                ViewMode.Month -> s.anchor.withDayOfMonth(1)
-            }
+            val anchor =
+                when (mode) {
+                    ViewMode.Day -> s.anchor
+                    ViewMode.Week -> weekStart(s.anchor)
+                    ViewMode.Month -> s.anchor.withDayOfMonth(1)
+                }
             val week = List(7) { anchor.plusDays(it.toLong()) }
-            val selected = if (mode == ViewMode.Week && s.selectedDay !in week) anchor else s.selectedDay
+            val selected =
+                if (mode == ViewMode.Week && s.selectedDay !in week) anchor else s.selectedDay
             s.copy(mode = mode, anchor = anchor, selectedDay = selected)
         }
         reload()
@@ -69,11 +78,12 @@ class TimelineViewModel(private val token: () -> String?) : ViewModel() {
 
     private fun shift(direction: Long) {
         _ui.update { s ->
-            val anchor = when (s.mode) {
-                ViewMode.Day -> s.anchor.plusDays(direction)
-                ViewMode.Week -> s.anchor.plusDays(7 * direction)
-                ViewMode.Month -> s.anchor.plusMonths(direction)
-            }
+            val anchor =
+                when (s.mode) {
+                    ViewMode.Day -> s.anchor.plusDays(direction)
+                    ViewMode.Week -> s.anchor.plusDays(7 * direction)
+                    ViewMode.Month -> s.anchor.plusMonths(direction)
+                }
             s.copy(anchor = anchor, selectedDay = anchor)
         }
         reload()
@@ -82,11 +92,12 @@ class TimelineViewModel(private val token: () -> String?) : ViewModel() {
     fun today() {
         val today = LocalDate.now()
         _ui.update { s ->
-            val anchor = when (s.mode) {
-                ViewMode.Day -> today
-                ViewMode.Week -> weekStart(today)
-                ViewMode.Month -> today.withDayOfMonth(1)
-            }
+            val anchor =
+                when (s.mode) {
+                    ViewMode.Day -> today
+                    ViewMode.Week -> weekStart(today)
+                    ViewMode.Month -> today.withDayOfMonth(1)
+                }
             s.copy(anchor = anchor, selectedDay = today)
         }
         reload()
@@ -112,16 +123,17 @@ class TimelineViewModel(private val token: () -> String?) : ViewModel() {
         val to = Instant.ofEpochMilli(dayStartMs(days.last().plusDays(1)))
         loadJob?.cancel()
         _ui.update { it.copy(loading = true) }
-        loadJob = viewModelScope.launch {
-            try {
-                val spans = SpansApi.getSpans(bearer, from, to, s.collectionId)
-                _ui.update { it.copy(spans = spans, loading = false, error = "") }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                _ui.update { it.copy(loading = false, error = e.message ?: "Network error") }
+        loadJob =
+            viewModelScope.launch {
+                try {
+                    val spans = SpansApi.getSpans(bearer, from, to, s.collectionId)
+                    _ui.update { it.copy(spans = spans, loading = false, error = "") }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    _ui.update { it.copy(loading = false, error = e.message ?: "Network error") }
+                }
             }
-        }
     }
 
     private fun loadCollections() {

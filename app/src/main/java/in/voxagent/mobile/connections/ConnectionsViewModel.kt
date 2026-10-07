@@ -41,7 +41,9 @@ data class ConnectionsUiState(
             val isConn: (String) -> Boolean = { id -> connections.any { it.connector_id == id } }
             return connectors
                 .filter { c ->
-                    q.isEmpty() || c.name.lowercase().contains(q) || c.description.lowercase().contains(q)
+                    q.isEmpty() ||
+                        c.name.lowercase().contains(q) ||
+                        c.description.lowercase().contains(q)
                 }
                 .filter { c ->
                     when (filter) {
@@ -51,17 +53,19 @@ data class ConnectionsUiState(
                     }
                 }
                 .sortedWith(
-                    compareByDescending<ConnectorDescriptor> { isConn(it.id) }
-                        .thenBy { it.name }
+                    compareByDescending<ConnectorDescriptor> { isConn(it.id) }.thenBy { it.name }
                 )
         }
 
     val counts: Triple<Int, Int, Int>
         get() {
             val q = searchQuery.trim().lowercase()
-            val matches = connectors.filter { c ->
-                q.isEmpty() || c.name.lowercase().contains(q) || c.description.lowercase().contains(q)
-            }
+            val matches =
+                connectors.filter { c ->
+                    q.isEmpty() ||
+                        c.name.lowercase().contains(q) ||
+                        c.description.lowercase().contains(q)
+                }
             val allCount = matches.size
             val connCount = matches.count { c -> connections.any { it.connector_id == c.id } }
             val availCount = matches.count { c -> connections.none { it.connector_id == c.id } }
@@ -69,10 +73,8 @@ data class ConnectionsUiState(
         }
 }
 
-class ConnectionsViewModel(
-    application: Application,
-    private val tokenProvider: () -> String?,
-) : AndroidViewModel(application) {
+class ConnectionsViewModel(application: Application, private val tokenProvider: () -> String?) :
+    AndroidViewModel(application) {
 
     companion object {
         private const val PREFS_NAME = "vox_connections_prefs"
@@ -81,11 +83,10 @@ class ConnectionsViewModel(
 
     private val prefs = application.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    private val _ui = MutableStateFlow(
-        ConnectionsUiState(
-            pendingSetupId = prefs.getString(KEY_PENDING_SETUP, null),
+    private val _ui =
+        MutableStateFlow(
+            ConnectionsUiState(pendingSetupId = prefs.getString(KEY_PENDING_SETUP, null))
         )
-    )
     val ui: StateFlow<ConnectionsUiState> = _ui.asStateFlow()
 
     private var pollJob: Job? = null
@@ -118,11 +119,12 @@ class ConnectionsViewModel(
         viewModelScope.launch {
             _ui.update { it.copy(loading = it.connectors.isEmpty(), error = null) }
             try {
-                val (connectors, connections) = coroutineScope {
-                    val c = async { ConnectionsApi.listConnectors(token) }
-                    val n = async { ConnectionsApi.listConnections(token) }
-                    c.await() to n.await()
-                }
+                val (connectors, connections) =
+                    coroutineScope {
+                        val c = async { ConnectionsApi.listConnectors(token) }
+                        val n = async { ConnectionsApi.listConnections(token) }
+                        c.await() to n.await()
+                    }
                 _ui.update {
                     it.copy(
                         connectors = connectors.filter { c -> c.auth_type != "import" },
@@ -135,10 +137,7 @@ class ConnectionsViewModel(
                 if (e is CancellationException) throw e
                 Timber.e(e, "Failed to load connections")
                 _ui.update {
-                    it.copy(
-                        loading = false,
-                        error = e.message ?: "Failed to load connections",
-                    )
+                    it.copy(loading = false, error = e.message ?: "Failed to load connections")
                 }
             }
         }
@@ -154,14 +153,15 @@ class ConnectionsViewModel(
         viewModelScope.launch {
             _ui.update { it.copy(busy = true, statusMessage = null, error = null) }
             try {
-                val resp = ConnectionsApi.startConnection(
-                    token,
-                    StartConnectionRequest(
-                        connector_id = connectorId,
-                        consent = consent,
-                        npsso = npsso?.ifBlank { null },
+                val resp =
+                    ConnectionsApi.startConnection(
+                        token,
+                        StartConnectionRequest(
+                            connector_id = connectorId,
+                            consent = consent,
+                            npsso = npsso?.ifBlank { null },
+                        ),
                     )
-                )
 
                 if (resp.setup_id != null && resp.authorization_url != null) {
                     savePendingSetup(resp.setup_id)
@@ -176,10 +176,7 @@ class ConnectionsViewModel(
                     onOpenUrl(resp.authorization_url)
                 } else {
                     _ui.update {
-                        it.copy(
-                            busy = false,
-                            statusMessage = "Account connected successfully.",
-                        )
+                        it.copy(busy = false, statusMessage = "Account connected successfully.")
                     }
                     reload()
                 }
@@ -202,12 +199,7 @@ class ConnectionsViewModel(
         viewModelScope.launch {
             runCatching { ConnectionsApi.cancelSetup(token, setupId) }
             clearPendingSetup()
-            _ui.update {
-                it.copy(
-                    pendingSetupId = null,
-                    statusMessage = "Setup cancelled.",
-                )
-            }
+            _ui.update { it.copy(pendingSetupId = null, statusMessage = "Setup cancelled.") }
         }
     }
 
@@ -219,12 +211,13 @@ class ConnectionsViewModel(
 
     private fun startPolling() {
         pollJob?.cancel()
-        pollJob = viewModelScope.launch {
-            while (isActive && _ui.value.pendingSetupId != null) {
-                checkPendingStatus()
-                delay(3000)
+        pollJob =
+            viewModelScope.launch {
+                while (isActive && _ui.value.pendingSetupId != null) {
+                    checkPendingStatus()
+                    delay(3000)
+                }
             }
-        }
     }
 
     private fun checkPendingStatus() {
@@ -240,11 +233,12 @@ class ConnectionsViewModel(
                     _ui.update {
                         it.copy(
                             pendingSetupId = null,
-                            statusMessage = if (status.status == "authorized") {
-                                "Account connected successfully."
-                            } else {
-                                "Setup ended. Start again to connect your account."
-                            },
+                            statusMessage =
+                                if (status.status == "authorized") {
+                                    "Account connected successfully."
+                                } else {
+                                    "Setup ended. Start again to connect your account."
+                                },
                         )
                     }
                     reload()
@@ -266,7 +260,11 @@ class ConnectionsViewModel(
         }
     }
 
-    fun updatePreferences(connectionId: String, syncTimeline: Boolean? = null, assistantRead: Boolean? = null) {
+    fun updatePreferences(
+        connectionId: String,
+        syncTimeline: Boolean? = null,
+        assistantRead: Boolean? = null,
+    ) {
         val token = tokenProvider() ?: return
         viewModelScope.launch {
             _ui.update { it.copy(busy = true) }
@@ -274,7 +272,7 @@ class ConnectionsViewModel(
                 ConnectionsApi.updatePreferences(
                     token,
                     connectionId,
-                    PreferencesRequest(sync_timeline = syncTimeline, assistant_read = assistantRead)
+                    PreferencesRequest(sync_timeline = syncTimeline, assistant_read = assistantRead),
                 )
                 reload()
             } catch (e: Exception) {

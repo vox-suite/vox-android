@@ -22,14 +22,19 @@ private val bitmaps = LruCache<String, Bitmap>(48)
 private val blurredBitmaps = LruCache<String, Bitmap>(24)
 
 private suspend fun load(url: String): Bitmap? {
-    bitmaps.get(url)?.let { return it }
+    bitmaps.get(url)?.let {
+        return it
+    }
     return withContext(Dispatchers.IO) {
         runCatching {
-            VoxHttp.client.newCall(Request.Builder().url(url).build()).execute().use { response ->
-                if (!response.isSuccessful) return@use null
-                response.body.byteStream().use { BitmapFactory.decodeStream(it) }
+                VoxHttp.client.newCall(Request.Builder().url(url).build()).execute().use { response
+                    ->
+                    if (!response.isSuccessful) return@use null
+                    response.body.byteStream().use { BitmapFactory.decodeStream(it) }
+                }
             }
-        }.getOrNull()?.also { bitmaps.put(url, it) }
+            .getOrNull()
+            ?.also { bitmaps.put(url, it) }
     }
 }
 
@@ -51,7 +56,10 @@ private fun boxBlur(pixels: IntArray, w: Int, h: Int, radius: Int) {
     val temp = IntArray(w * h)
     for (y in 0 until h) {
         val row = y * w
-        var aSum = 0; var rSum = 0; var gSum = 0; var bSum = 0
+        var aSum = 0
+        var rSum = 0
+        var gSum = 0
+        var bSum = 0
         val count = 2 * r + 1
         for (i in -r..r) {
             val px = pixels[row + i.coerceIn(0, w - 1)]
@@ -61,7 +69,11 @@ private fun boxBlur(pixels: IntArray, w: Int, h: Int, radius: Int) {
             bSum += px and 0xFF
         }
         for (x in 0 until w) {
-            temp[row + x] = ((aSum / count) shl 24) or ((rSum / count) shl 16) or ((gSum / count) shl 8) or (bSum / count)
+            temp[row + x] =
+                ((aSum / count) shl 24) or
+                    ((rSum / count) shl 16) or
+                    ((gSum / count) shl 8) or
+                    (bSum / count)
             val pOut = pixels[row + (x - r).coerceIn(0, w - 1)]
             val pIn = pixels[row + (x + r + 1).coerceIn(0, w - 1)]
             aSum += ((pIn ushr 24) and 0xFF) - ((pOut ushr 24) and 0xFF)
@@ -71,7 +83,10 @@ private fun boxBlur(pixels: IntArray, w: Int, h: Int, radius: Int) {
         }
     }
     for (x in 0 until w) {
-        var aSum = 0; var rSum = 0; var gSum = 0; var bSum = 0
+        var aSum = 0
+        var rSum = 0
+        var gSum = 0
+        var bSum = 0
         val count = 2 * r + 1
         for (i in -r..r) {
             val px = temp[i.coerceIn(0, h - 1) * w + x]
@@ -82,7 +97,11 @@ private fun boxBlur(pixels: IntArray, w: Int, h: Int, radius: Int) {
         }
         for (y in 0 until h) {
             val col = y * w + x
-            pixels[col] = ((aSum / count) shl 24) or ((rSum / count) shl 16) or ((gSum / count) shl 8) or (bSum / count)
+            pixels[col] =
+                ((aSum / count) shl 24) or
+                    ((rSum / count) shl 16) or
+                    ((gSum / count) shl 8) or
+                    (bSum / count)
             val pOut = temp[(y - r).coerceIn(0, h - 1) * w + x]
             val pIn = temp[(y + r + 1).coerceIn(0, h - 1) * w + x]
             aSum += ((pIn ushr 24) and 0xFF) - ((pOut ushr 24) and 0xFF)
@@ -101,18 +120,21 @@ fun RemoteImage(
     alpha: Float = 1f,
     blur: Boolean = false,
 ) {
-    var bitmap by remember(url, blur) {
-        mutableStateOf(url?.let { if (blur) blurredBitmaps.get(it) else bitmaps.get(it) })
-    }
+    var bitmap by
+        remember(url, blur) {
+            mutableStateOf(url?.let { if (blur) blurredBitmaps.get(it) else bitmaps.get(it) })
+        }
     LaunchedEffect(url, blur) {
         if (url != null && bitmap == null) {
             val loaded = load(url)
             if (loaded != null) {
-                bitmap = if (blur) {
-                    blurredBitmaps.get(url) ?: withContext(Dispatchers.Default) {
-                        fastBlur(loaded).also { blurredBitmaps.put(url, it) }
-                    }
-                } else loaded
+                bitmap =
+                    if (blur) {
+                        blurredBitmaps.get(url)
+                            ?: withContext(Dispatchers.Default) {
+                                fastBlur(loaded).also { blurredBitmaps.put(url, it) }
+                            }
+                    } else loaded
             }
         }
     }

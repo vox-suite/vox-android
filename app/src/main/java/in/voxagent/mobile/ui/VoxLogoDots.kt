@@ -1,7 +1,7 @@
 package `in`.voxagent.mobile.ui
 
 internal object VoxLogoDots {
-    // 566 dots interleaved as cx, cy, r, op from vox-desktop STATIC_ORB_DOTS
+
     val DOTS: FloatArray = floatArrayOf(
         37.32f, 30.66f, 0.32f, 0.080f, 28.78f, 38.92f, 0.30f, 0.248f, 25.74f, 37.54f, 0.30f, 0.250f, 32.00f, 40.65f, 0.30f, 0.252f,
         24.68f, 37.91f, 0.32f, 0.080f, 28.65f, 41.12f, 0.31f, 0.267f, 25.47f, 39.68f, 0.31f, 0.269f, 22.82f, 36.53f, 0.30f, 0.258f,

@@ -8,8 +8,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
@@ -19,12 +19,6 @@ import androidx.compose.ui.unit.dp
 import `in`.voxagent.mobile.ui.theme.Mist
 import kotlin.math.min
 
-/**
- * Vox orb logo ported directly from Vox Desktop. Static mode renders the
- * same stippled point cloud as the desktop SVG (VoxLogoDots); animated mode
- * runs the same "composing" thinking-orb ribbon animation (VoxOrbEngine),
- * ported from vox-bridge/assets/thinking-orb-engine.js.
- */
 @Composable
 fun VoxLogo(
     modifier: Modifier = Modifier,
@@ -45,22 +39,19 @@ fun VoxLogo(
         }
     }
 
-    Canvas(
-        modifier = modifier
-            .size(size)
-            .semantics { contentDescription = "Vox" },
-    ) {
+    Canvas(modifier = modifier.size(size).semantics { contentDescription = "Vox" }) {
         val scale = this.size.minDimension / 64f
         if (animated) {
             for (dot in VoxOrbEngine.frameRibbon(simTime)) {
                 val dotAlpha = (dot.alpha * color.alpha).coerceIn(0f, 1f)
-                val dotColor = if (color == Mist) {
-                    val w = dot.white.coerceIn(0f, 1f)
-                    val g = 1f - w
-                    Color(g, g, g, dot.alpha)
-                } else {
-                    color.copy(alpha = dotAlpha)
-                }
+                val dotColor =
+                    if (color == Mist) {
+                        val w = dot.white.coerceIn(0f, 1f)
+                        val g = 1f - w
+                        Color(g, g, g, dot.alpha)
+                    } else {
+                        color.copy(alpha = dotAlpha)
+                    }
                 drawCircle(
                     color = dotColor,
                     radius = dot.r * scale,

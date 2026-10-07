@@ -1,29 +1,15 @@
 package `in`.voxagent.mobile.ui
 
-import android.graphics.BitmapFactory
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -33,64 +19,38 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.outlined.Hub
+import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.net.toUri
 import dev.chrisbanes.haze.HazeDefaults
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
 import `in`.voxagent.mobile.R
-import `in`.voxagent.mobile.net.VoxHttp
 import `in`.voxagent.mobile.ui.theme.BorderSubtle
 import `in`.voxagent.mobile.ui.theme.CoralPulse
 import `in`.voxagent.mobile.ui.theme.Ink
-import `in`.voxagent.mobile.ui.theme.Obsidian
 import `in`.voxagent.mobile.ui.theme.PureWhite
-import `in`.voxagent.mobile.ui.theme.Smoke
 import `in`.voxagent.mobile.ui.theme.VoidBlack
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import okhttp3.Request
-import java.io.File
 
-enum class Destination { Home, Timeline, Connections }
-
-enum class TalkState { Idle, Connecting, Active, Error }
-
-/**
- * Unified bottom navigation bar matching the tactile Vox design system.
- * Full-length translucent container with subtle border:
- * - Left: Vox Logo icon button
- * - Center: Red elongated pill with Mic icon and "Talk to Vox" text
- * - Right: Circular button displaying the user's Google avatar
- */
 @Composable
 fun VoxBottomNav(
     avatarUrl: String?,
@@ -103,449 +63,235 @@ fun VoxBottomNav(
     onTalkClick: () -> Unit = {},
     hazeState: HazeState? = null,
 ) {
-    val containerSurfaceModifier = if (hazeState != null) {
-        Modifier.hazeEffect(
-            state = hazeState,
-            style = HazeDefaults.style(
-                backgroundColor = VoidBlack.copy(alpha = 0.65f),
-                tint = HazeTint(Ink.copy(alpha = 0.45f)),
-                blurRadius = 24.dp,
-            ),
-        )
-    } else Modifier
+    val containerSurfaceModifier =
+        if (hazeState != null) {
+            Modifier.hazeEffect(
+                state = hazeState,
+                style =
+                    HazeDefaults.style(
+                        backgroundColor = VoidBlack.copy(alpha = 0.65f),
+                        tint = HazeTint(Ink.copy(alpha = 0.45f)),
+                        blurRadius = 24.dp,
+                    ),
+            )
+        } else Modifier
 
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+    BoxWithConstraints(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        // Section 1 (Left): Translucent Pill with Vox Animated Logo + Agent Icon
-        Surface(
-            modifier = Modifier
-                .height(52.dp)
-                .clip(RoundedCornerShape(50))
-                .then(containerSurfaceModifier),
-            shape = RoundedCornerShape(50),
-            color = if (hazeState != null) Color.Transparent else VoidBlack.copy(alpha = 0.72f),
-            border = BorderStroke(1.dp, BorderSubtle.copy(alpha = 0.6f)),
-            shadowElevation = 8.dp,
-        ) {
-            Row(
-                modifier = Modifier
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                NavDestinationButton(
-                    selected = destination == Destination.Home,
-                    description = "Home",
-                    onClick = { onDestination(Destination.Home) },
-                ) { tint ->
-                    VoxLogo(size = 24.dp, color = tint, animated = true, modifier = Modifier.aspectRatio(1f))
-                }
-                NavDestinationButton(
-                    selected = destination == Destination.Timeline,
-                    description = "Timeline",
-                    onClick = { onDestination(Destination.Timeline) },
-                ) { tint -> CalendarIcon(tint = tint, modifier = Modifier.size(22.dp)) }
-                NavDestinationButton(
-                    selected = destination == Destination.Connections,
-                    description = "Connected Apps",
-                    onClick = { onDestination(Destination.Connections) },
-                ) { tint ->
-                    Icon(
-                        painter = painterResource(R.drawable.ic_plug),
-                        contentDescription = null,
-                        tint = tint,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        // Right cluster: Mic circular container and Avatar container separated by a gap
+        val compact = maxWidth < 420.dp
         Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            val active = talkState == TalkState.Active
-            val pillColor by animateColorAsState(
-                targetValue = when {
-                    active -> CoralPulse.copy(alpha = 0.92f)
-                    hazeState != null -> Color.Transparent
-                    else -> VoidBlack.copy(alpha = 0.72f)
-                },
-                label = "talkPillColor",
-            )
-            val pillBorder by animateColorAsState(
-                targetValue = when {
-                    active -> CoralPulse
-                    talkState == TalkState.Error -> CoralPulse.copy(alpha = 0.7f)
-                    else -> BorderSubtle.copy(alpha = 0.6f)
-                },
-                label = "talkPillBorder",
-            )
             Surface(
-                modifier = Modifier
-                    .height(52.dp)
-                    .clip(RoundedCornerShape(50))
-                    .then(containerSurfaceModifier)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onTalkClick,
-                    ),
+                modifier =
+                    Modifier.height(52.dp)
+                        .clip(RoundedCornerShape(50))
+                        .then(containerSurfaceModifier),
                 shape = RoundedCornerShape(50),
-                color = pillColor,
-                border = BorderStroke(1.dp, pillBorder),
-                shadowElevation = 8.dp,
-            ) {
-                Row(
-                    modifier = Modifier
-                        .animateContentSize()
-                        .padding(horizontal = 18.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    if (active) {
-                        Box(modifier = Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-                            Box(
-                                modifier = Modifier
-                                    .size(12.dp)
-                                    .clip(RoundedCornerShape(3.dp))
-                                    .background(PureWhite),
-                            )
-                        }
-                    } else {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_mic),
-                            contentDescription = null,
-                            tint = if (talkState == TalkState.Connecting) PureWhite.copy(alpha = 0.5f) else PureWhite,
-                            modifier = Modifier.size(24.dp),
-                        )
-                    }
-                    Text(
-                        text = when (talkState) {
-                            TalkState.Idle -> "Talk"
-                            TalkState.Connecting -> "Connecting…"
-                            TalkState.Active -> "End call"
-                            TalkState.Error -> "Retry"
-                        },
-                        color = PureWhite,
-                        fontWeight = FontWeight.Medium,
-                        fontSize = 14.sp,
-                    )
-                }
-            }
-
-            // Section 3: Translucent Circular Avatar Container
-            Surface(
-                modifier = Modifier
-                    .size(52.dp)
-                    .clip(CircleShape)
-                    .then(containerSurfaceModifier)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onAvatarClick,
-                    ),
-                shape = CircleShape,
                 color = if (hazeState != null) Color.Transparent else VoidBlack.copy(alpha = 0.72f),
                 border = BorderStroke(1.dp, BorderSubtle.copy(alpha = 0.6f)),
                 shadowElevation = 8.dp,
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(4.dp),
-                        contentAlignment = Alignment.Center,
+                Row(
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(if (compact) 0.dp else 4.dp),
                 ) {
-                    VoxUserAvatar(
-                        avatarUrl = avatarUrl,
-                        displayName = displayName,
-                        size = 40.dp,
-                    )
+                    NavDestinationButton(
+                        compact = compact,
+                        selected = destination == Destination.Home,
+                        description = "Home",
+                        onClick = { onDestination(Destination.Home) },
+                    ) { tint ->
+                        VoxLogo(
+                            size = 30.dp,
+                            color = tint,
+                            animated = true,
+                            modifier = Modifier.aspectRatio(1f),
+                        )
+                    }
+                    NavDestinationButton(
+                        compact = compact,
+                        selected = destination == Destination.Timeline,
+                        description = "Timeline",
+                        onClick = { onDestination(Destination.Timeline) },
+                    ) { tint ->
+                        CalendarIcon(tint = tint, modifier = Modifier.size(22.dp))
+                    }
+                    NavDestinationButton(
+                        compact = compact,
+                        selected = destination == Destination.Spaces,
+                        description = "Spaces",
+                        onClick = { onDestination(Destination.Spaces) },
+                    ) { tint ->
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Outlined.Hub,
+                            contentDescription = null,
+                            tint = tint,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    NavDestinationButton(
+                        compact = compact,
+                        selected = destination == Destination.Pulse,
+                        description = "Pulse",
+                        onClick = { onDestination(Destination.Pulse) },
+                    ) { tint ->
+                        Icon(
+                            androidx.compose.material.icons.Icons.Outlined.MonitorHeart,
+                            null,
+                            tint = tint,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    NavDestinationButton(
+                        compact = compact,
+                        selected = destination == Destination.Connections,
+                        description = "Connected Apps",
+                        onClick = { onDestination(Destination.Connections) },
+                    ) { tint ->
+                        Icon(
+                            painter = painterResource(R.drawable.ic_plug),
+                            contentDescription = null,
+                            tint = tint,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                 }
             }
-        }
-    }
-}
 
-/**
- * Asynchronously loads and caches the user's avatar from Google Sign-In,
- * falling back gracefully to a stylized initial letter when offline or unavailable.
- */
-@Composable
-fun VoxUserAvatar(
-    avatarUrl: String?,
-    displayName: String?,
-    modifier: Modifier = Modifier,
-    size: Dp = 44.dp,
-) {
-    val context = LocalContext.current
-    var avatarBitmap by remember(avatarUrl) { mutableStateOf<ImageBitmap?>(null) }
+            Spacer(modifier = Modifier.weight(1f))
 
-    LaunchedEffect(avatarUrl) {
-        if (avatarUrl.isNullOrBlank()) return@LaunchedEffect
-        withContext(Dispatchers.IO) {
-            try {
-                val cacheKey = avatarUrl.hashCode().toString()
-                val cacheFile = File(context.cacheDir, "vox_user_avatar_$cacheKey.png")
-                if (cacheFile.exists() && cacheFile.length() > 0) {
-                    val cachedBm = BitmapFactory.decodeFile(cacheFile.absolutePath)
-                    if (cachedBm != null) {
-                        avatarBitmap = cachedBm.asImageBitmap()
-                        return@withContext
-                    }
-                }
-
-                val bytes: ByteArray? = if (avatarUrl.startsWith("content://") || avatarUrl.startsWith("file://")) {
-                    context.contentResolver.openInputStream(avatarUrl.toUri())?.use { it.readBytes() }
-                } else {
-                    val request = Request.Builder()
-                        .url(avatarUrl)
-                        .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36")
-                        .build()
-                    VoxHttp.client.newCall(request).execute().use { response ->
-                        if (response.isSuccessful) {
-                            response.body.bytes()
-                        } else null
-                    }
-                }
-
-                if (bytes != null && bytes.isNotEmpty()) {
-                    val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                    if (decoded != null) {
-                        runCatching { cacheFile.writeBytes(bytes) }
-                        avatarBitmap = decoded.asImageBitmap()
-                    }
-                }
-            } catch (_: Exception) {
-                // Ignore network issues, fallback renders
-            }
-        }
-    }
-
-    Box(
-        modifier = modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(Obsidian)
-            .border(BorderStroke(1.dp, BorderSubtle), CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        val bitmap = avatarBitmap
-        if (bitmap != null) {
-            Image(
-                bitmap = bitmap,
-                contentDescription = displayName ?: "Google User Avatar",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else if (!displayName.isNullOrBlank()) {
-            Text(
-                text = displayName.trim().first().uppercase(),
-                color = PureWhite,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                fontSize = (size.value * 0.42f).sp,
-            )
-        } else {
-            Image(
-                painter = painterResource(id = R.drawable.ic_google),
-                contentDescription = "Google Account Avatar",
-                modifier = Modifier.size(size * 0.52f),
-            )
-        }
-    }
-}
-
-/**
- * Slide-up User Profile and settings panel shown when the avatar is clicked.
- */
-@Composable
-fun VoxProfileSheet(
-    displayName: String?,
-    email: String?,
-    avatarUrl: String?,
-    visible: Boolean,
-    onDismiss: () -> Unit,
-    onSignOut: () -> Unit,
-    modifier: Modifier = Modifier,
-    hazeState: HazeState? = null,
-    onSyncProfile: (() -> Unit)? = null,
-    onReviewPermissions: (() -> Unit)? = null,
-    permissionsAllSet: Boolean = false,
-    onOpenConnections: (() -> Unit)? = null,
-) {
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn() + slideInVertically(initialOffsetY = { it }),
-        exit = fadeOut() + slideOutVertically(targetOffsetY = { it }),
-        modifier = modifier,
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(VoidBlack.copy(alpha = 0.65f))
-                .clickable(onClick = onDismiss),
-            contentAlignment = Alignment.BottomCenter,
-        ) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                    .then(
-                        if (hazeState != null) {
-                            Modifier.hazeEffect(
-                                state = hazeState,
-                                style = HazeDefaults.style(
-                                    backgroundColor = VoidBlack.copy(alpha = 0.65f),
-                                    tint = HazeTint(Ink.copy(alpha = 0.5f)),
-                                    blurRadius = 24.dp,
-                                ),
-                            )
-                        } else Modifier,
-                    )
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {},
-                    ),
-                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                color = if (hazeState != null) Color.Transparent else Ink.copy(alpha = 0.82f),
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(horizontal = 20.dp, vertical = 24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                val active = talkState == TalkState.Active
+                val pillColor by
+                    animateColorAsState(
+                        targetValue =
+                            when {
+                                active -> CoralPulse.copy(alpha = 0.92f)
+                                hazeState != null -> Color.Transparent
+                                else -> VoidBlack.copy(alpha = 0.72f)
+                            },
+                        label = "talkPillColor",
+                    )
+                val pillBorder by
+                    animateColorAsState(
+                        targetValue =
+                            when {
+                                active -> CoralPulse
+                                talkState == TalkState.Error -> CoralPulse.copy(alpha = 0.7f)
+                                else -> BorderSubtle.copy(alpha = 0.6f)
+                            },
+                        label = "talkPillBorder",
+                    )
+                Surface(
+                    modifier =
+                        Modifier.height(52.dp)
+                            .clip(RoundedCornerShape(50))
+                            .then(containerSurfaceModifier)
+                            .semantics {
+                                contentDescription =
+                                    when (talkState) {
+                                        TalkState.Active -> "End call"
+                                        TalkState.Connecting -> "Connecting to Vox"
+                                        TalkState.Error -> "Retry voice call"
+                                        TalkState.Idle -> "Talk to Vox"
+                                    }
+                            }
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onTalkClick,
+                            ),
+                    shape = RoundedCornerShape(50),
+                    color = pillColor,
+                    border = BorderStroke(1.dp, pillBorder),
+                    shadowElevation = 8.dp,
                 ) {
-                    // Drag Handle
-                    Box(
-                        modifier = Modifier
-                            .size(width = 36.dp, height = 4.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(BorderSubtle),
-                    )
-
-                    // Avatar & Details
-                    VoxUserAvatar(
-                        avatarUrl = avatarUrl,
-                        displayName = displayName,
-                        size = 64.dp,
-                    )
-
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = displayName ?: "Vox User",
-                            color = PureWhite,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        if (!email.isNullOrBlank()) {
-                            Text(
-                                text = email,
-                                color = Smoke,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 12.sp,
+                    Row(
+                        modifier =
+                            Modifier.animateContentSize()
+                                .padding(horizontal = if (compact) 14.dp else 18.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        if (active) {
+                            Box(
+                                modifier = Modifier.size(24.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Box(
+                                    modifier =
+                                        Modifier.size(12.dp)
+                                            .clip(RoundedCornerShape(3.dp))
+                                            .background(PureWhite)
+                                )
+                            }
+                        } else {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_mic),
+                                contentDescription = null,
+                                tint =
+                                    if (talkState == TalkState.Connecting)
+                                        PureWhite.copy(alpha = 0.5f)
+                                    else PureWhite,
+                                modifier = Modifier.size(24.dp),
                             )
                         }
-                    }
-
-                    if (onOpenConnections != null || onReviewPermissions != null) {
-                        VoxSettingsGroup {
-                            if (onOpenConnections != null) {
-                                VoxSettingsRow(
-                                    label = "Connected Apps",
-                                    showDivider = onReviewPermissions != null,
-                                    onClick = {
-                                        onDismiss()
-                                        onOpenConnections()
+                        if (!compact)
+                            Text(
+                                text =
+                                    when (talkState) {
+                                        TalkState.Idle -> "Talk"
+                                        TalkState.Connecting -> "Connecting…"
+                                        TalkState.Active -> "End call"
+                                        TalkState.Error -> "Retry"
                                     },
-                                )
-                            }
-                            if (onReviewPermissions != null) {
-                                VoxSettingsRow(
-                                    label = "Permissions",
-                                    trailingText = if (permissionsAllSet) "all set" else "Review",
-                                    trailingTone = if (permissionsAllSet) VoxStatusTone.Success else VoxStatusTone.Neutral,
-                                    showDivider = false,
-                                    onClick = {
-                                        onDismiss()
-                                        onReviewPermissions()
-                                    },
-                                )
-                            }
-                        }
+                                color = PureWhite,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 14.sp,
+                            )
                     }
+                }
 
-                    if (avatarUrl.isNullOrBlank() && onSyncProfile != null) {
-                        VoxPrimaryButton(
-                            text = "Sync Google Profile",
-                            modifier = Modifier.fillMaxWidth(),
-                            icon = {
-                                Image(
-                                    painter = painterResource(id = R.drawable.ic_google),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp),
-                                )
-                                   },
-                            onClick = {
-                                onDismiss()
-                                onSyncProfile()
-                            },
+                Surface(
+                    modifier =
+                        Modifier.size(52.dp)
+                            .clip(CircleShape)
+                            .then(containerSurfaceModifier)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onAvatarClick,
+                            ),
+                    shape = CircleShape,
+                    color =
+                        if (hazeState != null) Color.Transparent else VoidBlack.copy(alpha = 0.72f),
+                    border = BorderStroke(1.dp, BorderSubtle.copy(alpha = 0.6f)),
+                    shadowElevation = 8.dp,
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize().padding(4.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        VoxUserAvatar(
+                            avatarUrl = avatarUrl,
+                            displayName = displayName,
+                            size = 40.dp,
                         )
                     }
-
-                    VoxTextButton(
-                        text = "Sign Out",
-                        tone = CoralPulse,
-                        onClick = {
-                            onDismiss()
-                            onSignOut()
-                        },
-                    )
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun NavDestinationButton(
-    selected: Boolean,
-    description: String,
-    onClick: () -> Unit,
-    content: @Composable (Color) -> Unit,
-) {
-    val tint = if (selected) PureWhite else PureWhite.copy(alpha = 0.38f)
-    Box(
-        modifier = Modifier
-            .size(40.dp)
-            .clip(CircleShape)
-            .semantics { contentDescription = description }
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) { content(tint) }
-}
-
-@Composable
-fun CalendarIcon(tint: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier) {
-        val w = size.width
-        val h = size.height
-        val stroke = Stroke(width = w * 0.09f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        drawRoundRect(tint, topLeft = Offset(w * 0.1f, h * 0.18f), size = Size(w * 0.8f, h * 0.72f), cornerRadius = CornerRadius(w * 0.14f), style = stroke)
-        drawLine(tint, Offset(w * 0.1f, h * 0.42f), Offset(w * 0.9f, h * 0.42f), strokeWidth = w * 0.09f, cap = StrokeCap.Round)
-        drawLine(tint, Offset(w * 0.32f, h * 0.06f), Offset(w * 0.32f, h * 0.28f), strokeWidth = w * 0.09f, cap = StrokeCap.Round)
-        drawLine(tint, Offset(w * 0.68f, h * 0.06f), Offset(w * 0.68f, h * 0.28f), strokeWidth = w * 0.09f, cap = StrokeCap.Round)
     }
 }

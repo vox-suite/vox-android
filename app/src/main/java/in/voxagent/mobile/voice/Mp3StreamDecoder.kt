@@ -1,23 +1,19 @@
 package `in`.voxagent.mobile.voice
 
-import timber.log.Timber
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
 import javazoom.jl.decoder.Bitstream
 import javazoom.jl.decoder.BitstreamException
 import javazoom.jl.decoder.Decoder
 import javazoom.jl.decoder.SampleBuffer
+import timber.log.Timber
 
 private const val TAG = "Mp3StreamDecoder"
 private const val PIPE_BUFFER_SIZE = 256 * 1024
 
-/**
- * Decodes a live MP3 byte stream fed in arbitrary-sized chunks (WebSocket
- * frames, not MP3-frame-aligned). One Bitstream/Decoder pair is kept alive
- * for the whole turn instead of being rebuilt per chunk, so a frame split
- * across two chunks decodes correctly instead of losing its tail.
- */
-class Mp3StreamDecoder(private val onPcm: (samples: ShortArray, sampleRate: Int, channels: Int) -> Unit) {
+class Mp3StreamDecoder(
+    private val onPcm: (samples: ShortArray, sampleRate: Int, channels: Int) -> Unit
+) {
     private var pipeOut: PipedOutputStream? = null
     private var decodeThread: Thread? = null
 
@@ -38,10 +34,12 @@ class Mp3StreamDecoder(private val onPcm: (samples: ShortArray, sampleRate: Int,
     @Synchronized
     fun enqueueChunk(bytes: ByteArray) {
         Timber.tag(TAG).d("enqueueChunk: ${bytes.size} bytes")
-        val out = pipeOut ?: run {
-            Timber.tag(TAG).w("enqueueChunk: no pipe open, dropping ${bytes.size} bytes")
-            return
-        }
+        val out =
+            pipeOut
+                ?: run {
+                    Timber.tag(TAG).w("enqueueChunk: no pipe open, dropping ${bytes.size} bytes")
+                    return
+                }
         try {
             out.write(bytes)
             out.flush()
@@ -65,19 +63,23 @@ class Mp3StreamDecoder(private val onPcm: (samples: ShortArray, sampleRate: Int,
         var frameCount = 0
         try {
             while (!Thread.currentThread().isInterrupted) {
-                val header = try {
-                    bitstream.readFrame()
-                } catch (e: BitstreamException) {
-                    Timber.tag(TAG).w("MP3 decoding warning: ${e.message}")
-                    break
-                } ?: break
+                val header =
+                    try {
+                        bitstream.readFrame()
+                    } catch (e: BitstreamException) {
+                        Timber.tag(TAG).w("MP3 decoding warning: ${e.message}")
+                        break
+                    } ?: break
 
                 val output = decoder.decodeFrame(header, bitstream)
                 if (output is SampleBuffer && output.bufferLength > 0) {
                     frameCount++
                     val samples = output.buffer.copyOf(output.bufferLength)
-                    Timber.tag(TAG).d("decodeLoop: frame #$frameCount bufferLength=${output.bufferLength} " +
-"sampleRate=${output.sampleFrequency} channels=${output.channelCount}")
+                    Timber.tag(TAG)
+                        .d(
+                            "decodeLoop: frame #$frameCount bufferLength=${output.bufferLength} " +
+                                "sampleRate=${output.sampleFrequency} channels=${output.channelCount}"
+                        )
                     onPcm(samples, output.sampleFrequency, output.channelCount)
                 } else {
                     Timber.tag(TAG).d("decodeLoop: frame decoded to non-audio output: $output")

@@ -12,8 +12,7 @@ data class SmsConsentStatus(
     val synced_until: String? = null,
 )
 
-@Serializable
-private data class GrantConsentRequest(val retention_days: Int)
+@Serializable private data class GrantConsentRequest(val retention_days: Int)
 
 const val SMS_RETENTION_DAYS = 256
 
@@ -25,11 +24,15 @@ object SmsConsentApi {
         return json.decodeFromString(SmsConsentStatus.serializer(), responseJson)
     }
 
-    suspend fun grant(bearerToken: String, retentionDays: Int = SMS_RETENTION_DAYS): SmsConsentStatus {
-        val requestJson = json.encodeToString(
-            GrantConsentRequest.serializer(),
-            GrantConsentRequest(retention_days = retentionDays),
-        )
+    suspend fun grant(
+        bearerToken: String,
+        retentionDays: Int = SMS_RETENTION_DAYS,
+    ): SmsConsentStatus {
+        val requestJson =
+            json.encodeToString(
+                GrantConsentRequest.serializer(),
+                GrantConsentRequest(retention_days = retentionDays),
+            )
         val responseJson = VoxHttp.postJson("/v1/sms/consent/grant", requestJson, bearerToken)
         return json.decodeFromString(SmsConsentStatus.serializer(), responseJson)
     }

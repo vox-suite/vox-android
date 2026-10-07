@@ -6,7 +6,6 @@ import java.time.Instant
 
 class SmsReader(private val context: Context) {
 
-    /** The newest [limit] messages, returned oldest first. Used for the very first sync. */
     fun readLatest(limit: Int): List<SmsMessage> = query(null, null, "DESC", limit).reversed()
 
     fun readSince(sinceEpochMillis: Long, limit: Int): List<SmsMessage> =
@@ -18,38 +17,35 @@ class SmsReader(private val context: Context) {
         order: String,
         limit: Int,
     ): List<SmsMessage> {
-        val projection = arrayOf(
-            Telephony.Sms.ADDRESS,
-            Telephony.Sms.BODY,
-            Telephony.Sms.DATE,
-        )
+        val projection = arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.BODY, Telephony.Sms.DATE)
 
         val messages = mutableListOf<SmsMessage>()
-        context.contentResolver.query(
-            Telephony.Sms.CONTENT_URI,
-            projection,
-            selection,
-            selectionArgs,
-            "${Telephony.Sms.DATE} $order LIMIT $limit",
-        )?.use { cursor ->
-            val addressIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
-            val bodyIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.BODY)
-            val dateIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.DATE)
+        context.contentResolver
+            .query(
+                Telephony.Sms.CONTENT_URI,
+                projection,
+                selection,
+                selectionArgs,
+                "${Telephony.Sms.DATE} $order LIMIT $limit",
+            )
+            ?.use { cursor ->
+                val addressIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
+                val bodyIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.BODY)
+                val dateIndex = cursor.getColumnIndexOrThrow(Telephony.Sms.DATE)
 
-            while (cursor.moveToNext()) {
-                val sender = cursor.getString(addressIndex) ?: continue
-                val body = cursor.getString(bodyIndex) ?: continue
-                val dateMillis = cursor.getLong(dateIndex)
-                messages.add(
-                    SmsMessage(
-                        sender = sender,
-                        body = body,
-                        received_at = Instant.ofEpochMilli(dateMillis).toString(),
-                    ),
-                )
+                while (cursor.moveToNext()) {
+                    val sender = cursor.getString(addressIndex) ?: continue
+                    val body = cursor.getString(bodyIndex) ?: continue
+                    val dateMillis = cursor.getLong(dateIndex)
+                    messages.add(
+                        SmsMessage(
+                            sender = sender,
+                            body = body,
+                            received_at = Instant.ofEpochMilli(dateMillis).toString(),
+                        )
+                    )
+                }
             }
-        }
         return messages
     }
-
 }

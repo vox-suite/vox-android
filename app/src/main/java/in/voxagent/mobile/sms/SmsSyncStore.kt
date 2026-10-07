@@ -1,9 +1,8 @@
 package `in`.voxagent.mobile.sms
 
-import androidx.core.content.edit
 import android.content.Context
+import androidx.core.content.edit
 
-/** Local copy of the last synced SMS timestamp (epoch millis); only ever moves forward. */
 object SmsSyncStore {
     private const val PREFS = "sms_sync"
     private const val KEY_CURSOR = "last_synced_ms"
@@ -17,17 +16,18 @@ object SmsSyncStore {
     fun advance(context: Context, millis: Long) {
         val current = cursor(context)
         if (current == null || millis > current) {
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit { putLong(KEY_CURSOR, millis) }
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit {
+                putLong(KEY_CURSOR, millis)
+            }
         }
     }
 
-    /** Which generation of the automatic 90-day history import has completed on this device. */
     fun backfillVersion(context: Context): Int =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(KEY_BACKFILL_VERSION, 0)
 
     fun markBackfilled(context: Context, version: Int) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit { putInt(KEY_BACKFILL_VERSION, version) }
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit {
+            putInt(KEY_BACKFILL_VERSION, version)
+        }
     }
 }

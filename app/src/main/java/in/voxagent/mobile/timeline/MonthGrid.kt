@@ -26,8 +26,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import `in`.voxagent.mobile.spans.Span
-import `in`.voxagent.mobile.spans.spanStyle
 import `in`.voxagent.mobile.spans.monthGridDays
+import `in`.voxagent.mobile.spans.spanStyle
 import `in`.voxagent.mobile.spans.spansOnDay
 import `in`.voxagent.mobile.ui.theme.BorderSubtle
 import `in`.voxagent.mobile.ui.theme.Mist
@@ -43,7 +43,14 @@ fun MonthGrid(anchor: LocalDate, spans: List<Span>, onSelectDay: (LocalDate) -> 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
             WEEKDAYS.forEach {
-                Text(it.uppercase(), color = SmokeDark, fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                Text(
+                    it.uppercase(),
+                    color = SmokeDark,
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
+                )
             }
         }
         grid.chunked(7).forEach { week ->
@@ -52,20 +59,45 @@ fun MonthGrid(anchor: LocalDate, spans: List<Span>, onSelectDay: (LocalDate) -> 
                     val items = remember(spans, day) { spansOnDay(spans, day) }
                     val inMonth = day.month == anchor.month
                     Column(
-                        Modifier.weight(1f).fillMaxSize().clickable { onSelectDay(day) }.alpha(if (inMonth) 1f else 0.4f).padding(vertical = 6.dp),
+                        Modifier.weight(1f)
+                            .fillMaxSize()
+                            .clickable { onSelectDay(day) }
+                            .alpha(if (inMonth) 1f else 0.4f)
+                            .padding(vertical = 6.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         Box(
-                            Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(if (day == today) BorderSubtle else Color.Transparent),
+                            Modifier.size(28.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (day == today) BorderSubtle else Color.Transparent),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text(day.dayOfMonth.toString(), color = Mist, fontSize = 13.sp, fontWeight = if (day == today) FontWeight.Bold else FontWeight.Medium, fontFamily = FontFamily.Monospace)
+                            Text(
+                                day.dayOfMonth.toString(),
+                                color = Mist,
+                                fontSize = 13.sp,
+                                fontWeight =
+                                    if (day == today) FontWeight.Bold else FontWeight.Medium,
+                                fontFamily = FontFamily.Monospace,
+                            )
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                            items.take(3).forEach { s -> Box(Modifier.size(6.dp).clip(CircleShape).background(spanStyle(s).dot)) }
+                            items.take(3).forEach { s ->
+                                Box(
+                                    Modifier.size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(spanStyle(s).dot)
+                                )
+                            }
                         }
-                        if (items.size > 3) Text("+${items.size - 3}", color = SmokeDark, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                        if (items.size > 3)
+                            Text(
+                                "+${items.size - 3}",
+                                color = SmokeDark,
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                            )
                     }
                 }
             }
