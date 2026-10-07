@@ -14,12 +14,38 @@ fun looksLikeOtp(body: String): Boolean {
     return lower.split(Regex("[^0-9]")).any { it.length in 4..8 }
 }
 
-// Match only codes explicitly attached to an OTP label; ambiguous layouts stay local.
-private val labeledCode = Regex(
-    """\b(?:otp|verification code|one-time password|one time password|security code)\s*(?:is\s*|:|=|-)?\s*[0-9]{4,8}\b|\b[0-9]{4,8}\s+(?:is\s+)?(?:your\s+)?(?:otp|verification code|one-time password|one time password|security code)\b""",
+private const val REDACTED = "[REDACTED]"
+private const val LABEL = "(?:otp|verification code|one-time password|one time password|security code)"
+
+// Codes must be explicitly attached to an OTP label; group 1 is the secret digits.
+private val directCode = Regex("""\b$LABEL\s*(?:is\s*|:|=|-)?\s*([0-9]{4,8})\b""", RegexOption.IGNORE_CASE)
+private val codeFirst = Regex(
+    """\b([0-9]{4,8})\s+(?:is\s+|as\s+)?(?:(?:your|the|this)\s+)?$LABEL\b""",
+    RegexOption.IGNORE_CASE,
+)
+// "Your OTP for txn of INR 500 at AMAZON on card XX1234 is 123456": code at the end of the sentence.
+private val trailingCode = Regex("""\b$LABEL\b[^\n]{0,160}?\bis\s*([0-9]{4,8})\b""", RegexOption.IGNORE_CASE)
+
+private fun redactCodes(body: String, pattern: Regex): String? {
+    var found = false
+    val result = pattern.replace(body) { match ->
+        found = true
+        val code = match.groups[1]!!.range
+        val start = match.range.first
+        match.value.substring(0, code.first - start) + REDACTED + match.value.substring(code.last + 1 - start)
+    }
+    return if (found) result else null
+}
+
+private val financialNumbers = Regex(
+    """(?:inr|rs\.?|₹|usd|\$|eur|gbp)\s*[0-9][0-9,.]*|(?:card|a/c|acct|account)\s*(?:ending\s*(?:in\s*)?|no\.?\s*)?[*xX -]*[0-9]{4}\b""",
     RegexOption.IGNORE_CASE,
 )
 
+/**
+ * Returns the message with any authentication code redacted, the message unchanged when it is
+ * not an OTP, or null when it must stay on the phone (pure OTPs and ambiguous layouts).
+ */
 fun sanitizeSmsBody(body: String): String? {
     if (!looksLikeOtp(body)) return body
     val lower = body.lowercase()
@@ -27,15 +53,14 @@ fun sanitizeSmsBody(body: String): String? {
         .any { lower.contains(it) }
     val amount = listOf("inr", "rs.", "rs ", "₹", "usd", "$", "eur", "gbp")
         .any { lower.contains(it) }
-    if (!financial || !amount || !labeledCode.containsMatchIn(body)) return null
-    val safeRanges = (labeledCode.findAll(body) + financialNumbers.findAll(body)).map { it.range }.toList()
-    if (Regex("""\b[0-9]{4,8}\b""").findAll(body).any { number ->
+    if (!financial || !amount) return null
+    var cleaned = redactCodes(body, directCode)
+    cleaned = redactCodes(cleaned ?: body, codeFirst) ?: cleaned
+    if (cleaned == null) cleaned = redactCodes(body, trailingCode)
+    val text = cleaned ?: if (body.contains(REDACTED)) body else return null
+    val safeRanges = financialNumbers.findAll(text).map { it.range }.toList()
+    val unsafe = Regex("""\b[0-9]{4,8}\b""").findAll(text).any { number ->
         safeRanges.none { it.first <= number.range.first && it.last >= number.range.last }
-    }) return null
-    return labeledCode.replace(body, "OTP [REDACTED]")
+    }
+    return if (unsafe) null else text
 }
-
-private val financialNumbers = Regex(
-    """(?:inr|rs\.?|₹|usd|\$|eur|gbp)\s*[0-9][0-9,.]*|(?:card|a/c|acct|account)\s*(?:ending\s*(?:in\s*)?|no\.?\s*)?[*xX -]*[0-9]{4}\b""",
-    RegexOption.IGNORE_CASE,
-)
