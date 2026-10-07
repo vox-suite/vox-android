@@ -36,7 +36,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import `in`.voxagent.mobile.net.LiveHub
-import `in`.voxagent.mobile.spans.summarize
 import `in`.voxagent.mobile.spans.Span
 import `in`.voxagent.mobile.spans.SpanCollection
 import `in`.voxagent.mobile.ui.VoxDarkScreen
@@ -48,6 +47,7 @@ import `in`.voxagent.mobile.ui.theme.CoralPulse
 import `in`.voxagent.mobile.ui.theme.GraphiteDark
 import `in`.voxagent.mobile.ui.theme.Mist
 import `in`.voxagent.mobile.ui.theme.Obsidian
+import `in`.voxagent.mobile.spans.DayKey
 import `in`.voxagent.mobile.ui.theme.SmokeDark
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -78,7 +78,7 @@ fun TimelineScreen(
     LaunchedEffect(Unit) {
         while (true) {
             delay(15_000)
-            vm.reload()
+            vm.revalidate()
         }
     }
 
@@ -89,11 +89,14 @@ fun TimelineScreen(
             if (ui.error.isNotEmpty()) VoxErrorBar(ui.error, onRetry = vm::reload)
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 Column(Modifier.fillMaxSize()) {
-                    Box(Modifier.weight(1f)) { PlanningTimeline(ui.days, ui.spans, onOpenSpan, loading = ui.loading) }
-                    if (ui.mode != ViewMode.Month && ui.collectionId == null) {
+                    Box(Modifier.weight(1f)) {
+                        if (ui.mode == ViewMode.Month) MonthGrid(ui.anchor, ui.dayCounts, vm::openDay)
+                        else PlanningTimeline(ui.days, ui.spans, onOpenSpan, loading = ui.loading)
+                    }
+                    if (ui.mode != ViewMode.Month) {
                         Row(Modifier.horizontalScroll(rememberScrollState())) {
-                            ui.days.filter { cachedDays[it]?.hasMore == true }.forEach { day ->
-                                androidx.compose.material3.TextButton(onClick = { vm.loadMore(day) }, enabled = cachedDays[day]?.loading != true) {
+                            ui.days.filter { cachedDays[DayKey(ui.collectionId.orEmpty(), it)]?.hasMore == true }.forEach { day ->
+                                androidx.compose.material3.TextButton(onClick = { vm.loadMore(day) }, enabled = cachedDays[DayKey(ui.collectionId.orEmpty(), day)]?.loading != true) {
                                     Text("Load more · ${day.monthValue}/${day.dayOfMonth}")
                                 }
                             }

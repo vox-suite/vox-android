@@ -116,7 +116,12 @@ data class DaySummary(
     val categories: List<CategoryCount> = emptyList(),
 )
 
-@Serializable data class DayCounts(val days: List<DaySummary> = emptyList())
+@Serializable
+data class DayCounts(
+    val revision: Long = 0,
+    val unchanged: Boolean = false,
+    val days: List<DaySummary> = emptyList(),
+)
 
 @Serializable
 data class DayPage(

@@ -1,5 +1,6 @@
 package `in`.voxagent.mobile.spans
 
+import `in`.voxagent.mobile.net.ApiException
 import `in`.voxagent.mobile.net.VoxApi
 import java.time.Instant
 import java.time.LocalDate
@@ -27,25 +28,102 @@ object SpansApi {
             token,
         )
 
-    suspend fun getDays(token: String, from: LocalDate, to: LocalDate): List<DaySummary> =
+    private fun notDeployed(e: ApiException) = e.status in listOf(400, 404, 405)
+
+    private suspend fun legacyDay(token: String, day: LocalDate, collectionId: String?): List<Span> =
+        getSpans(
+            token,
+            day.atStartOfDay(zone).toInstant(),
+            day.plusDays(1).atStartOfDay(zone).toInstant(),
+            collectionId,
+        )
+
+    suspend fun getDays(
+        token: String,
+        from: LocalDate,
+        to: LocalDate,
+        collectionId: String? = null,
+        ifRevision: Long? = null,
+    ): DayCounts =
+        try {
+            fetchDays(token, from, to, collectionId, ifRevision)
+        } catch (e: ApiException) {
+            if (!notDeployed(e)) throw e
+            val spans =
+                getSpans(
+                    token,
+                    from.atStartOfDay(zone).toInstant(),
+                    to.plusDays(1).atStartOfDay(zone).toInstant(),
+                    collectionId,
+                )
+            DayCounts(
+                days =
+                    generateSequence(from) { it.plusDays(1) }
+                        .takeWhile { !it.isAfter(to) }
+                        .mapNotNull { day ->
+                            val onDay = spansOnDay(spans, day)
+                            if (onDay.isEmpty()) null
+                            else
+                                DaySummary(
+                                    day.toString(),
+                                    onDay.size,
+                                    onDay.groupingBy { it.category }.eachCount().map {
+                                        CategoryCount(it.key, it.value)
+                                    },
+                                )
+                        }
+                        .toList()
+            )
+        }
+
+    private suspend fun fetchDays(
+        token: String,
+        from: LocalDate,
+        to: LocalDate,
+        collectionId: String?,
+        ifRevision: Long?,
+    ): DayCounts =
         VoxApi.post(
             "/v1/spans/days",
             buildJsonObject {
                 put("from_day", from.toString())
                 put("to_day", to.toString())
                 put("timezone", ZoneId.systemDefault().id)
+                put("collection_id", collectionId)
+                put("if_revision", ifRevision)
             },
             DayCounts.serializer(),
             token,
-        ).days
+        )
 
-    suspend fun getDayPage(token: String, day: LocalDate, cursor: String?, limit: Int = 40): DayPage =
+    suspend fun getDayPage(
+        token: String,
+        day: LocalDate,
+        cursor: String?,
+        collectionId: String? = null,
+        limit: Int = 40,
+    ): DayPage =
+        try {
+            fetchDayPage(token, day, cursor, collectionId, limit)
+        } catch (e: ApiException) {
+            if (!notDeployed(e)) throw e
+            DayPage(items = legacyDay(token, day, collectionId))
+        }
+
+    private suspend fun fetchDayPage(
+        token: String,
+        day: LocalDate,
+        cursor: String?,
+        collectionId: String?,
+        limit: Int,
+    ): DayPage =
         VoxApi.post(
             "/v1/spans/day",
             buildJsonObject {
                 put("day", day.toString())
                 put("timezone", ZoneId.systemDefault().id)
                 put("cursor", cursor)
+                put("collection_id", collectionId)
                 put("limit", limit)
             },
             DayPage.serializer(),

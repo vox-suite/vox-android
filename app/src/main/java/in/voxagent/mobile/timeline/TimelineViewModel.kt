@@ -2,6 +2,7 @@ package `in`.voxagent.mobile.timeline
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import `in`.voxagent.mobile.spans.DayKey
 import `in`.voxagent.mobile.spans.DaySummary
 import `in`.voxagent.mobile.spans.Span
 import `in`.voxagent.mobile.spans.SpanDayCache
@@ -62,6 +63,18 @@ class TimelineViewModel(private val token: () -> String?) : ViewModel() {
     init {
         loadCollections()
         reload()
+    }
+
+    fun revalidate() {
+        val bearer = token() ?: return
+        viewModelScope.launch {
+            try {
+                if (SpanDayCache.revalidate(bearer)) reload()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
+        }
     }
 
     fun setMode(mode: ViewMode) {
@@ -132,25 +145,16 @@ class TimelineViewModel(private val token: () -> String?) : ViewModel() {
         loadJob =
             viewModelScope.launch {
                 try {
-                    when {
-                        s.collectionId != null -> {
-                            val from = Instant.ofEpochMilli(dayStartMs(days.first()))
-                            val to = Instant.ofEpochMilli(dayStartMs(days.last().plusDays(1)))
-                            val spans = SpansApi.getSpans(bearer, from, to, s.collectionId)
-                            _ui.update { it.copy(spans = spans, loading = false, error = "") }
-                        }
-                        s.mode == ViewMode.Month -> {
-                            val spans = SpansApi.getSpans(bearer, Instant.ofEpochMilli(dayStartMs(days.first())), Instant.ofEpochMilli(dayStartMs(days.last().plusDays(1))), null)
-                            _ui.update { it.copy(spans = spans, hasMore = false, loading = false, error = "") }
-                        }
-                        else -> {
-                            coroutineScope {
-                                days.map { day -> async { SpanDayCache.loadFirst(bearer, day) } }
-                                    .awaitAll()
-                            }
-                            publish(days)
+                    val scope = s.collectionId.orEmpty()
+                    if (s.mode == ViewMode.Month) {
+                        SpanDayCache.loadCounts(bearer, scope, days.first(), days.last())
+                    } else {
+                        coroutineScope {
+                            days.map { day -> async { SpanDayCache.loadFirst(bearer, scope, day) } }
+                                .awaitAll()
                         }
                     }
+                    publish(days)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -162,11 +166,11 @@ class TimelineViewModel(private val token: () -> String?) : ViewModel() {
     fun loadMore(day: LocalDate = _ui.value.selectedDay) {
         val bearer = token() ?: return
         val s = _ui.value
-        if (s.collectionId != null || s.mode == ViewMode.Month) return
+        if (s.mode == ViewMode.Month) return
         val target = if (s.mode == ViewMode.Day) s.anchor else day
         viewModelScope.launch {
             try {
-                SpanDayCache.loadMore(bearer, target)
+                SpanDayCache.loadMore(bearer, s.collectionId.orEmpty(), target)
                 publish(s.days)
             } catch (e: CancellationException) {
                 throw e
@@ -177,15 +181,20 @@ class TimelineViewModel(private val token: () -> String?) : ViewModel() {
     }
 
     private fun publish(days: List<LocalDate>) {
+        val scope = _ui.value.collectionId.orEmpty()
         val entries = SpanDayCache.entries.value
         val seen = HashSet<String>()
-        val spans = days.flatMap { entries[it]?.items.orEmpty() }.filter { seen.add(it.id) }
+        val spans =
+            days.flatMap { entries[DayKey(scope, it)]?.items.orEmpty() }.filter { seen.add(it.id) }
         val target = _ui.value.let { if (it.mode == ViewMode.Day) it.anchor else it.selectedDay }
-        val entry = entries[target]
+        val entry = entries[DayKey(scope, target)]
         _ui.update {
             it.copy(
                 spans = spans,
-                dayCounts = SpanDayCache.counts.value,
+                dayCounts =
+                    SpanDayCache.counts.value
+                        .filterKeys { k -> k.scope == scope }
+                        .mapKeys { e -> e.key.day },
                 hasMore = entry?.hasMore == true,
                 frontierMs = entry?.items?.lastOrNull()?.startMs,
                 loading = false,

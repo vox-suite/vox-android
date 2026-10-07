@@ -15,47 +15,61 @@ data class DayEntry(
     val hasMore: Boolean get() = !done && cursor != null
 }
 
-object SpanDayCache {
-    private val _counts = MutableStateFlow<Map<LocalDate, DaySummary>>(emptyMap())
-    val counts: StateFlow<Map<LocalDate, DaySummary>> = _counts.asStateFlow()
+data class DayKey(val scope: String, val day: LocalDate)
 
-    private val _entries = MutableStateFlow<Map<LocalDate, DayEntry>>(emptyMap())
-    val entries: StateFlow<Map<LocalDate, DayEntry>> = _entries.asStateFlow()
+object SpanDayCache {
+    private val _counts = MutableStateFlow<Map<DayKey, DaySummary>>(emptyMap())
+    val counts: StateFlow<Map<DayKey, DaySummary>> = _counts.asStateFlow()
+
+    private val _entries = MutableStateFlow<Map<DayKey, DayEntry>>(emptyMap())
+    val entries: StateFlow<Map<DayKey, DayEntry>> = _entries.asStateFlow()
+
+    @Volatile private var revision: Long? = null
 
     fun clear() {
         _counts.value = emptyMap()
         _entries.value = emptyMap()
+        revision = null
     }
 
-    suspend fun loadCounts(token: String, from: LocalDate, to: LocalDate) {
-        val found = SpansApi.getDays(token, from, to).associateBy { LocalDate.parse(it.day) }
+    suspend fun loadCounts(token: String, scope: String, from: LocalDate, to: LocalDate) {
+        val result = SpansApi.getDays(token, from, to, scope.ifEmpty { null })
+        if (scope.isEmpty()) revision = result.revision
+        val found = result.days.associateBy { DayKey(scope, LocalDate.parse(it.day)) }
         _counts.update { current ->
-            val kept = current.filterKeys { it < from || it > to }
-            kept + found
+            current.filterKeys { it.scope != scope || it.day < from || it.day > to } + found
         }
     }
 
-    suspend fun loadFirst(token: String, day: LocalDate) {
-        patch(day) { it.copy(loading = true) }
+    suspend fun revalidate(token: String): Boolean {
+        val known = revision ?: return false
+        val today = LocalDate.now()
+        val changed = !SpansApi.getDays(token, today, today, null, known).unchanged
+        if (changed) revision = null
+        return changed
+    }
+
+    suspend fun loadFirst(token: String, scope: String, day: LocalDate) {
+        val key = DayKey(scope, day)
+        patch(key) { it.copy(loading = true) }
         try {
-            val page = SpansApi.getDayPage(token, day, null)
-            patch(day) {
-                DayEntry(page.items, page.nextCursor, page.nextCursor == null, false)
-            }
+            val page = SpansApi.getDayPage(token, day, null, scope.ifEmpty { null })
+            patch(key) { DayEntry(page.items, page.nextCursor, page.nextCursor == null, false) }
         } catch (e: Exception) {
-            patch(day) { it.copy(loading = false) }
+            patch(key) { it.copy(loading = false) }
             throw e
         }
     }
 
-    suspend fun loadMore(token: String, day: LocalDate) {
-        val current = _entries.value[day] ?: return
+    suspend fun loadMore(token: String, scope: String, day: LocalDate) {
+        val key = DayKey(scope, day)
+        val current = _entries.value[key] ?: return
         val cursor = current.cursor
         if (!current.hasMore || current.loading || cursor == null) return
-        patch(day) { it.copy(loading = true) }
+        patch(key) { it.copy(loading = true) }
         try {
-            val page = SpansApi.getDayPage(token, day, cursor)
-            patch(day) { latest ->
+            val page = SpansApi.getDayPage(token, day, cursor, scope.ifEmpty { null })
+            patch(key) { latest ->
                 val seen = latest.items.mapTo(HashSet()) { it.id }
                 DayEntry(
                     latest.items + page.items.filter { it.id !in seen },
@@ -65,25 +79,12 @@ object SpanDayCache {
                 )
             }
         } catch (e: Exception) {
-            patch(day) { it.copy(loading = false) }
+            patch(key) { it.copy(loading = false) }
             throw e
         }
     }
 
-    private fun patch(day: LocalDate, change: (DayEntry) -> DayEntry) {
-        _entries.update { it + (day to change(it[day] ?: DayEntry())) }
+    private fun patch(key: DayKey, change: (DayEntry) -> DayEntry) {
+        _entries.update { it + (key to change(it[key] ?: DayEntry())) }
     }
 }
-
-fun summarize(spans: List<Span>, days: List<LocalDate>): Map<LocalDate, DaySummary> =
-    days.mapNotNull { day ->
-        val onDay = spansOnDay(spans, day)
-        if (onDay.isEmpty()) null
-        else
-            day to
-                DaySummary(
-                    day.toString(),
-                    onDay.size,
-                    onDay.groupingBy { it.category }.eachCount().map { CategoryCount(it.key, it.value) },
-                )
-    }.toMap()
