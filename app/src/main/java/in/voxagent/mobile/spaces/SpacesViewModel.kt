@@ -21,23 +21,70 @@ class SpacesViewModel(private val token: () -> String?) : ViewModel() {
     private var refreshJob: Job? = null
     private var revision = 0L
     private var loadGeneration = 0L
+    private val streamed = HashMap<String, String>()
+
+    private fun withStreams(graph: SpaceGraph): SpaceGraph =
+        if (streamed.isEmpty()) graph
+        else
+            graph.copy(
+                nodes =
+                    graph.nodes.map { node ->
+                        val text = streamed[node.id] ?: return@map node
+                        if (node.state == "done" || node.state == "rejected") {
+                            streamed.remove(node.id)
+                            node
+                        } else node.copy(body = text)
+                    }
+            )
 
     suspend fun observe() {
         val live = LiveHub.get(token)
         live.start()
         load()
         try {
+            coroutineScope {
+                launch {
+                    live.events
+                        .filter { event ->
+                            event.type == "space_node_stream" &&
+                                event.payload["space_id"]?.jsonPrimitive?.content ==
+                                    mutableUi.value.selectedId
+                        }
+                        .collect { event ->
+                            val nodeId = event.payload["node_id"]?.jsonPrimitive?.content
+                            val text = event.payload["text"]?.jsonPrimitive?.content
+                            if (nodeId != null && text != null) {
+                                streamed[nodeId] = text
+                                mutableUi.update { state ->
+                                    state.copy(
+                                        graph =
+                                            state.graph?.let { g ->
+                                                g.copy(
+                                                    nodes =
+                                                        g.nodes.map {
+                                                            if (it.id == nodeId) it.copy(body = text)
+                                                            else it
+                                                        }
+                                                )
+                                            }
+                                    )
+                                }
+                            }
+                        }
+                }
             live.events
                 .filter { event ->
-                    event.type == "live_reconnected" ||
+                    event.type != "space_node_stream" &&
+                    (event.type == "live_reconnected" ||
                         (event.type.startsWith("space_") &&
                             (mutableUi.value.selectedId == null ||
                                 event.payload["space_id"]?.jsonPrimitive?.content ==
                                     mutableUi.value.selectedId ||
-                                event.payload["space_id"] == null))
+                                event.payload["space_id"] == null)))
                 }
                 .conflate()
                 .collect { load() }
+            }
         } finally {
             refreshJob?.cancel()
         }
@@ -91,7 +138,7 @@ class SpacesViewModel(private val token: () -> String?) : ViewModel() {
                     }
                 if (current())
                     mutableUi.update {
-                        it.copy(graph = graph, messages = messages, loading = false, error = null)
+                        it.copy(graph = withStreams(graph), messages = messages, loading = false, error = null)
                     }
             }
         } catch (e: Exception) {
