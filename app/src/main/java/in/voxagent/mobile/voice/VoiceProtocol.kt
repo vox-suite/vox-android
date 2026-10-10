@@ -5,10 +5,6 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 sealed class VoiceClientMessage {
-    @Serializable
-    @SerialName("turn")
-    data class Turn(val conversation_id: String? = null) : VoiceClientMessage()
-
     @Serializable @SerialName("interrupt") object Interrupt : VoiceClientMessage()
 
     @Serializable @SerialName("ping") object Ping : VoiceClientMessage()
@@ -18,7 +14,9 @@ sealed class VoiceClientMessage {
 sealed class VoiceServerMessage {
     @Serializable
     @SerialName("connected")
-    data class Connected(val format: String, val sample_rate: Int) : VoiceServerMessage()
+    data class Connected(val format: String, val sample_rate: Int, val input_mode: String = "turn") : VoiceServerMessage()
+
+    @Serializable @SerialName("audio_turn_submitted") data class AudioTurnSubmitted(val audio_ms: Long) : VoiceServerMessage()
 
     @Serializable
     @SerialName("user_transcript")

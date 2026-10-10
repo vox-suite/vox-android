@@ -28,19 +28,7 @@ import timber.log.Timber
 
 private const val TAG = "VoiceSession"
 
-private const val SPEECH_THRESHOLD = 0.015f
-
-private const val SILENCE_TIMEOUT_MS = 650L
-
-private const val MIN_UTTERANCE_SAMPLES = 5600
-
 private const val PING_INTERVAL_MS = 15_000L
-
-private const val INTERRUPT_DEBOUNCE_CHUNKS = 4
-
-private const val ECHO_THRESHOLD = 0.03f
-
-private const val ECHO_TAIL_MS = 300L
 
 private val protocolJson = Json {
     ignoreUnknownKeys = true
@@ -142,7 +130,7 @@ class VoiceSession(private val context: Context) {
 
         val request =
             Request.Builder()
-                .url("$wsBase/v1/me/voice/socket")
+                .url("$wsBase/v1/me/voice/socket?input=stream")
                 .header("Authorization", "Bearer $token")
                 .build()
 
@@ -158,17 +146,11 @@ class VoiceSession(private val context: Context) {
                             "connected to voice socket: ws_connect_ms=${System.currentTimeMillis() - connectStartedAt} http=${response.code} protocol=${response.protocol}",
                         )
                         startPingTimer(webSocket)
-                        val audioStarted = System.currentTimeMillis()
-                        startAudio(webSocket)
-                        RemoteLog.i(
-                            TAG,
-                            "audio engine started: engine_start_ms=${System.currentTimeMillis() - audioStarted} since_session_start_ms=${System.currentTimeMillis() - sessionStartedAt}",
-                        )
-                        _status.value = VoiceStatus.ACTIVE
+
                     }
 
                     override fun onMessage(webSocket: WebSocket, text: String) {
-                        Timber.tag(TAG).d("onMessage(text): $text")
+                        Timber.tag(TAG).d("onMessage(text): ${text.length} chars")
                         handleServerMessage(text)
                     }
 
@@ -222,6 +204,14 @@ class VoiceSession(private val context: Context) {
             PING_INTERVAL_MS,
             PING_INTERVAL_MS,
         )
+        timer.schedule(object : TimerTask() {
+            override fun run() {
+                if (webSocket === ws && _status.value == VoiceStatus.CONNECTING) {
+                    stop()
+                    fail("Voice server did not acknowledge streaming mode")
+                }
+            }
+        }, 10_000L)
         pingTimer = timer
     }
 
@@ -229,103 +219,20 @@ class VoiceSession(private val context: Context) {
         Timber.tag(TAG).d("startAudio: starting playback + capture")
         audioEngine.startPlayback()
 
-        val speechBuffer = ArrayList<Short>(16000 * 5)
-        var isInSpeech = false
-        var lastSpeechTime = System.currentTimeMillis()
-        var lastLevelLog = 0L
-        var lastStatsLog = System.currentTimeMillis()
-        var micChunks = 0
-        var micRmsSum = 0f
-        var micRmsPeak = 0f
-        var micClipped = 0
-        var droppedShort = 0
-        var consecutiveLoudChunks = 0
-        var lastPlayingAt = 0L
-
-        Timber.tag(TAG)
-            .d(
-                "startAudio: SPEECH_THRESHOLD=$SPEECH_THRESHOLD MIN_UTTERANCE_SAMPLES=$MIN_UTTERANCE_SAMPLES SILENCE_TIMEOUT_MS=$SILENCE_TIMEOUT_MS"
-            )
-
         audioEngine.startCapture { samples ->
-            val rms =
-                kotlin.math
-                    .sqrt(
-                        samples.sumOf {
-                            val f = it / 32768.0
-                            f * f
-                        } / samples.size.coerceAtLeast(1)
-                    )
-                    .toFloat()
-
-            val now = System.currentTimeMillis()
-            if (now - lastLevelLog >= 1000) {
-                Timber.tag(TAG)
-                    .d("mic level: rms=$rms threshold=$SPEECH_THRESHOLD isInSpeech=$isInSpeech")
-                lastLevelLog = now
-            }
-            micChunks++
-            micRmsSum += rms
-            micRmsPeak = maxOf(micRmsPeak, rms)
-            if (samples.any { it >= 32500 || it <= -32500 }) micClipped++
-            if (now - lastStatsLog >= 15_000) {
-                RemoteLog.i(
-                    TAG,
-                    "MIC STATS ~15s: chunks=$micChunks rms_avg=${"%.4f".format(micRmsSum / micChunks.coerceAtLeast(1))} rms_peak=${"%.4f".format(micRmsPeak)} clipped_chunks=$micClipped utterances=$utterances dropped_short=$droppedShort barge_ins=$bargeIns",
-                )
-                lastStatsLog = now
-                micChunks = 0
-                micRmsSum = 0f
-                micRmsPeak = 0f
-                micClipped = 0
-            }
-
-            val playing = audioEngine.isPlaying()
-            if (playing) lastPlayingAt = now
-            val threshold =
-                if (now - lastPlayingAt < ECHO_TAIL_MS) ECHO_THRESHOLD else SPEECH_THRESHOLD
-
-            if (rms >= threshold) {
-                consecutiveLoudChunks++
-
-                if (consecutiveLoudChunks >= INTERRUPT_DEBOUNCE_CHUNKS && playing) {
-                    bargeIns++
-                    RemoteLog.i(TAG, "barge-in: user spoke over playback (rms=$rms), interrupting")
-                    audioEngine.clearPlayback()
-                    ws.send(
-                        protocolJson.encodeToString(
-                            VoiceClientMessage.serializer(),
-                            VoiceClientMessage.Interrupt,
-                        )
-                    )
-                    _events.tryEmit(VoiceEvent.Interrupted)
-                }
-                if (!isInSpeech) Timber.tag(TAG).d("startAudio: speech started (rms=$rms)")
-                speechBuffer.addAll(samples.asList())
-                lastSpeechTime = now
-                isInSpeech = true
-            } else {
-                consecutiveLoudChunks = 0
-                if (isInSpeech) {
-                    speechBuffer.addAll(samples.asList())
-                    if (now - lastSpeechTime >= SILENCE_TIMEOUT_MS) {
-                        isInSpeech = false
-                        Timber.tag(TAG)
-                            .d("startAudio: speech ended, buffered ${speechBuffer.size} samples")
-                        if (speechBuffer.size >= MIN_UTTERANCE_SAMPLES) {
-                            val utterance = speechBuffer.toShortArray()
-                            speechBuffer.clear()
-                            sendUtterance(ws, utterance)
-                        } else {
-                            droppedShort++
-                            RemoteLog.d(
-                                TAG,
-                                "utterance too short (${speechBuffer.size} < $MIN_UTTERANCE_SAMPLES), dropped",
-                            )
-                            speechBuffer.clear()
-                        }
+            if (webSocket !== ws) return@startCapture
+            var offset = 0
+            while (offset < samples.size) {
+                val end = minOf(offset + 1600, samples.size)
+                val chunk = samples.copyOfRange(offset, end)
+                if (ws.queueSize() > 64000 || !ws.send(pcm16ToLittleEndianBytes(chunk).toByteString())) {
+                    scope.launch {
+                        stop()
+                        fail("Voice upload stalled")
                     }
+                    return@startCapture
                 }
+                offset = end
             }
         }
     }
@@ -338,28 +245,6 @@ class VoiceSession(private val context: Context) {
             bytes[i * 2 + 1] = ((v shr 8) and 0xFF).toByte()
         }
         return bytes
-    }
-
-    private fun sendUtterance(ws: WebSocket, utterance: ShortArray) {
-        val bytes = pcm16ToLittleEndianBytes(utterance)
-        RemoteLog.i(
-            TAG,
-            "sending utterance: ${utterance.size} samples (${utterance.size * 1000 / 16000}ms), ${bytes.size} bytes",
-        )
-        utterances++
-        turnSentAt = System.currentTimeMillis()
-        awaitingFirstAudio = true
-        awaitingFirstDelta = true
-        turnFrames = 0
-        turnBytes = 0
-        maxFrameGapMs = 0L
-        ws.send(bytes.toByteString())
-        ws.send(
-            protocolJson.encodeToString(
-                VoiceClientMessage.serializer(),
-                VoiceClientMessage.Turn(conversation_id = null),
-            )
-        )
     }
 
     private fun onAudioFrame(size: Int) {
@@ -395,16 +280,35 @@ class VoiceSession(private val context: Context) {
 
         when (message) {
             is VoiceServerMessage.Connected -> {
+                if (message.input_mode != "stream") {
+                    stop()
+                    fail("Voice server does not support continuous audio yet")
+                    return
+                }
+                if (_status.value == VoiceStatus.CONNECTING) {
+                    webSocket?.let { startAudio(it) }
+                    _status.value = VoiceStatus.ACTIVE
+                }
                 RemoteLog.i(
                     TAG,
                     "voice session connected: format=${message.format} sample_rate=${message.sample_rate} since_session_start_ms=${System.currentTimeMillis() - sessionStartedAt}",
                 )
             }
+            is VoiceServerMessage.AudioTurnSubmitted -> {
+                utterances++
+                turnSentAt = System.currentTimeMillis()
+                awaitingFirstAudio = true
+                awaitingFirstDelta = true
+                turnFrames = 0
+                turnBytes = 0
+                maxFrameGapMs = 0L
+                RemoteLog.i(TAG, "server endpoint: audio_ms=${message.audio_ms} detector=earshot")
+            }
             is VoiceServerMessage.UserTranscript -> {
                 if (turnSentAt != 0L)
                     RemoteLog.i(
                         TAG,
-                        "LATENCY transcript_ms=${System.currentTimeMillis() - turnSentAt} (utterance sent -> transcript)",
+                        "LATENCY transcript_ms=${System.currentTimeMillis() - turnSentAt} (server endpoint -> transcript)",
                     )
                 RemoteLog.i(TAG, "user transcript: ${message.text.length} chars")
                 _events.tryEmit(VoiceEvent.UserTranscript(message.text))
@@ -420,7 +324,7 @@ class VoiceSession(private val context: Context) {
                         if (turnSentAt != 0L)
                             RemoteLog.i(
                                 TAG,
-                                "LATENCY first_text_delta_ms=${System.currentTimeMillis() - turnSentAt} (utterance sent -> first text)",
+                                "LATENCY first_text_delta_ms=${System.currentTimeMillis() - turnSentAt} (server endpoint -> first text)",
                             )
                     }
                     _events.tryEmit(VoiceEvent.Delta(message.delta))
