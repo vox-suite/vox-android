@@ -6,6 +6,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -30,7 +32,6 @@ import `in`.voxagent.mobile.pulse.PulseScreen
 import `in`.voxagent.mobile.spaces.SpacesScreen
 import `in`.voxagent.mobile.spans.SpanCollection
 import `in`.voxagent.mobile.timeline.SheetTarget
-import `in`.voxagent.mobile.timeline.SpanSheet
 import `in`.voxagent.mobile.timeline.TimelineScreen
 import `in`.voxagent.mobile.ui.Destination
 import `in`.voxagent.mobile.ui.TalkState
@@ -63,6 +64,10 @@ internal fun HomeScreen(
     val voiceContext = LocalContext.current
     val voiceSession = remember { VoiceSession(voiceContext) }
     var voiceStatus by remember { mutableStateOf(VoiceStatus.IDLE) }
+    var voiceMuted by remember { mutableStateOf(false) }
+    val voiceSnackbar = remember { androidx.compose.material3.SnackbarHostState() }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val permissionScope = androidx.compose.runtime.rememberCoroutineScope()
     var recordAudioGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(voiceContext, Manifest.permission.RECORD_AUDIO) ==
@@ -73,9 +78,29 @@ internal fun HomeScreen(
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             recordAudioGranted = granted
             if (granted) voiceSession.start()
+            else
+                permissionScope.launch {
+                    voiceSnackbar.showSnackbar("Microphone permission is needed to call Vox")
+                }
         }
     LaunchedEffect(voiceSession) { voiceSession.status.collect { voiceStatus = it } }
-    DisposableEffect(voiceSession) { onDispose { voiceSession.stop() } }
+    DisposableEffect(voiceSession, lifecycleOwner) {
+        val observer =
+            androidx.lifecycle.LifecycleEventObserver { _, event ->
+                if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) voiceSession.stop()
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    DisposableEffect(voiceSession) { onDispose { voiceSession.dispose() } }
+    LaunchedEffect(voiceSession) {
+        voiceSession.events.collect { event ->
+            if (event is `in`.voxagent.mobile.voice.VoiceEvent.Error)
+                voiceSnackbar.showSnackbar(event.message)
+        }
+    }
+    LaunchedEffect(voiceStatus) { if (voiceStatus != VoiceStatus.ACTIVE) voiceMuted = false }
+    LaunchedEffect(token) { if (token == null) voiceSession.stop() }
 
     var voxSpeaking by remember { mutableStateOf(false) }
     LaunchedEffect(voiceStatus) {
@@ -113,11 +138,21 @@ internal fun HomeScreen(
             )
             sheet?.let { target ->
                 val event = (target as? SheetTarget.Edit)?.span
-                if (event != null) androidx.compose.material3.AlertDialog(
-                    onDismissRequest = { sheet = null }, title = { androidx.compose.material3.Text(event.title) },
-                    text = { androidx.compose.material3.Text(event.notes + "\n" + (event.data?.toString() ?: "")) },
-                    confirmButton = { androidx.compose.material3.TextButton(onClick = { sheet = null }) { androidx.compose.material3.Text("Close") } }
-                )
+                if (event != null)
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { sheet = null },
+                        title = { androidx.compose.material3.Text(event.title) },
+                        text = {
+                            androidx.compose.material3.Text(
+                                event.notes + "\n" + (event.data?.toString() ?: "")
+                            )
+                        },
+                        confirmButton = {
+                            androidx.compose.material3.TextButton(onClick = { sheet = null }) {
+                                androidx.compose.material3.Text("Close")
+                            }
+                        },
+                    )
             }
         }
 
@@ -139,6 +174,25 @@ internal fun HomeScreen(
                 onBack = { destination = Destination.Home },
             )
         }
+
+        if (voiceStatus == VoiceStatus.ACTIVE || voiceStatus == VoiceStatus.CONNECTING) {
+            `in`.voxagent.mobile.voice.VoiceControls(
+                status = voiceStatus,
+                muted = voiceMuted,
+                speaking = voxSpeaking,
+                onMute = {
+                    voiceMuted = !voiceMuted
+                    voiceSession.setMuted(voiceMuted)
+                },
+                onStop = { voiceSession.stop() },
+                onSend = { voiceSession.sendText(it) },
+                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(16.dp),
+            )
+        }
+        androidx.compose.material3.SnackbarHost(
+            hostState = voiceSnackbar,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 100.dp),
+        )
 
         VoxBottomNav(
             destination = destination,

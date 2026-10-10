@@ -22,8 +22,8 @@ android {
         minSdk = 26
         targetSdk = 37
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        versionCode = 53
-        versionName = "0.3.01"
+        versionCode = 54
+        versionName = "0.4.01"
 
         buildConfigField(
             "String",
@@ -44,6 +44,11 @@ android {
             "String",
             "VOX_API_BASE_URL",
             "\"${localProperties.getProperty("VOX_API_BASE_URL", "https://api.callvox.in")}\"",
+        )
+        buildConfigField(
+            "String",
+            "VOX_BRIDGE_BASE_URL",
+            "\"${localProperties.getProperty("VOX_BRIDGE_BASE_URL", localProperties.getProperty("VOX_API_BASE_URL", "https://api.callvox.in"))}\"",
         )
     }
 
@@ -107,7 +112,6 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:5.5.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("androidx.security:security-crypto:1.1.0")
-    implementation("javazoom:jlayer:1.0.1")
 
     implementation("dev.chrisbanes.haze:haze:1.5.3")
 }

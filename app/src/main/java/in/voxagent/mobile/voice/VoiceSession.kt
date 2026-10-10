@@ -2,21 +2,22 @@ package `in`.voxagent.mobile.voice
 
 import android.content.Context
 import `in`.voxagent.mobile.BuildConfig
-import `in`.voxagent.mobile.auth.AuthManager
-import `in`.voxagent.mobile.logging.RemoteLog
+import `in`.voxagent.mobile.auth.SessionStore
 import `in`.voxagent.mobile.net.VoxHttp
 import java.util.Timer
 import java.util.TimerTask
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.Request
 import okhttp3.Response
@@ -24,330 +25,288 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
 import okio.ByteString.Companion.toByteString
-import timber.log.Timber
-
-private const val TAG = "VoiceSession"
-
-private const val PING_INTERVAL_MS = 15_000L
 
 private val protocolJson = Json {
     ignoreUnknownKeys = true
     classDiscriminator = "type"
 }
 
-class VoiceSession(private val context: Context) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val audioEngine = VoiceAudioEngine(context)
+@Serializable private data class VoiceBootstrap(val session_id: String, val ticket: String)
 
-    fun isVoxSpeaking(): Boolean = audioEngine.isPlaying()
-
-    private var webSocket: WebSocket? = null
-    private var pingTimer: Timer? = null
-    private var currentTurnId: String? = null
-
-    @Volatile private var sessionStartedAt = 0L
-    @Volatile private var connectStartedAt = 0L
-    @Volatile private var turnSentAt = 0L
-    @Volatile private var greetingPending = true
-    @Volatile private var awaitingFirstAudio = false
-    @Volatile private var awaitingFirstDelta = false
-    @Volatile private var lastAudioFrameAt = 0L
-    @Volatile private var turnFrames = 0
-    @Volatile private var turnBytes = 0
-    @Volatile private var maxFrameGapMs = 0L
-    @Volatile private var utterances = 0
-    @Volatile private var bargeIns = 0
-
+class VoiceSession(context: Context) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val sessionStore = SessionStore(context.applicationContext)
+    private val audioEngine = VoiceAudioEngine(context.applicationContext)
+    private val socketClient =
+        VoxHttp.client.newBuilder().pingInterval(15, TimeUnit.SECONDS).build()
+    @Volatile private var webSocket: WebSocket? = null
+    @Volatile private var generation = 0L
+    @Volatile private var muted = false
+    private var timer: Timer? = null
     private val _status = MutableStateFlow(VoiceStatus.IDLE)
-    val status: StateFlow<VoiceStatus> = _status.asStateFlow()
-
+    val status = _status.asStateFlow()
     private val _events = MutableSharedFlow<VoiceEvent>(extraBufferCapacity = 16)
-    val events: SharedFlow<VoiceEvent> = _events.asSharedFlow()
+    val events = _events.asSharedFlow()
 
+    fun isVoxSpeaking() = audioEngine.isPlaying()
+
+    fun setMuted(value: Boolean) {
+        muted = value
+    }
+
+    @Synchronized
     fun start() {
         if (_status.value == VoiceStatus.CONNECTING || _status.value == VoiceStatus.ACTIVE) return
-        _status.value = VoiceStatus.CONNECTING
-        sessionStartedAt = System.currentTimeMillis()
-        greetingPending = true
-        awaitingFirstAudio = false
-        awaitingFirstDelta = false
-        turnSentAt = 0L
-        lastAudioFrameAt = 0L
-        utterances = 0
-        bargeIns = 0
-        RemoteLog.i(
-            TAG,
-            "=== voice session starting === device=${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} sdk=${android.os.Build.VERSION.SDK_INT} app=${BuildConfig.VERSION_NAME}",
-        )
-
-        scope.launch {
-            try {
-                connectSocket()
-            } catch (e: Exception) {
-                RemoteLog.e(TAG, "Failed to connect voice socket", e)
-                fail("Voice connection failed: ${e.message}")
-            }
-        }
-    }
-
-    fun stop() {
-        if (sessionStartedAt != 0L) {
-            RemoteLog.i(
-                TAG,
-                "=== voice session ended === duration_ms=${System.currentTimeMillis() - sessionStartedAt} utterances=$utterances barge_ins=$bargeIns underruns=${audioEngine.underrunCount()}",
-            )
-            sessionStartedAt = 0L
-        }
-        pingTimer?.cancel()
-        pingTimer = null
-        webSocket?.close(1000, "client stop")
-        webSocket = null
-        audioEngine.release()
-        currentTurnId = null
-        _status.value = VoiceStatus.IDLE
-    }
-
-    private fun fail(message: String) {
-        _status.value = VoiceStatus.ERROR
-        _events.tryEmit(VoiceEvent.Error(message))
-    }
-
-    private fun connectSocket() {
-        val token = AuthManager(context).currentToken()
+        val token = sessionStore.currentToken()
         if (token == null) {
-            fail("Sign in before starting a voice session")
+            _status.value = VoiceStatus.ERROR
+            _events.tryEmit(VoiceEvent.Error("Sign in before talking to Vox"))
             return
         }
-
-        val wsBase =
-            BuildConfig.VOX_API_BASE_URL.trimEnd('/').let {
-                when {
-                    it.startsWith("https://") -> "wss://" + it.removePrefix("https://")
-                    it.startsWith("http://") -> "ws://" + it.removePrefix("http://")
-                    else -> "ws://$it"
-                }
-            }
-
-        val request =
-            Request.Builder()
-                .url("$wsBase/v1/me/voice/socket?input=stream")
-                .header("Authorization", "Bearer $token")
-                .build()
-
-        connectStartedAt = System.currentTimeMillis()
-        RemoteLog.i(TAG, "connectSocket: connecting to ${request.url}")
-        webSocket =
-            VoxHttp.client.newWebSocket(
-                request,
-                object : WebSocketListener() {
-                    override fun onOpen(webSocket: WebSocket, response: Response) {
-                        RemoteLog.i(
-                            TAG,
-                            "connected to voice socket: ws_connect_ms=${System.currentTimeMillis() - connectStartedAt} http=${response.code} protocol=${response.protocol}",
-                        )
-                        startPingTimer(webSocket)
-
-                    }
-
-                    override fun onMessage(webSocket: WebSocket, text: String) {
-                        Timber.tag(TAG).d("onMessage(text): ${text.length} chars")
-                        handleServerMessage(text)
-                    }
-
-                    override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
-                        Timber.tag(TAG).d("onMessage(bytes): ${bytes.size} bytes")
-                        onAudioFrame(bytes.size)
-                        audioEngine.mp3Decoder.enqueueChunk(bytes.toByteArray())
-                    }
-
-                    override fun onFailure(
-                        webSocket: WebSocket,
-                        t: Throwable,
-                        response: Response?,
-                    ) {
-                        RemoteLog.e(
-                            TAG,
-                            "Voice socket failure after ${System.currentTimeMillis() - sessionStartedAt}ms http=${response?.code}",
-                            t,
-                        )
-                        fail("Voice connection failed: ${t.message}")
-                        stop()
-                    }
-
-                    override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                        RemoteLog.i(TAG, "Voice socket closed: $code $reason")
-                        if (_status.value != VoiceStatus.IDLE) {
-                            _status.value = VoiceStatus.IDLE
-                        }
-                    }
-                },
-            )
-    }
-
-    private fun startPingTimer(ws: WebSocket) {
-        val timer = Timer("voice-ping", true)
-        timer.schedule(
-            object : TimerTask() {
-                override fun run() {
-                    ws.send(
-                        protocolJson.encodeToString(
-                            VoiceClientMessage.serializer(),
-                            VoiceClientMessage.Ping,
-                        )
-                    )
-                    RemoteLog.i(
-                        TAG,
-                        "PLAYBACK STATS ~15s: underruns_total=${audioEngine.underrunCount()} queued_chunks=${audioEngine.queuedChunkCount()} playing=${audioEngine.isPlaying()}",
-                    )
-                }
-            },
-            PING_INTERVAL_MS,
-            PING_INTERVAL_MS,
-        )
-        timer.schedule(object : TimerTask() {
-            override fun run() {
-                if (webSocket === ws && _status.value == VoiceStatus.CONNECTING) {
-                    stop()
-                    fail("Voice server did not acknowledge streaming mode")
-                }
-            }
-        }, 10_000L)
-        pingTimer = timer
-    }
-
-    private fun startAudio(ws: WebSocket) {
-        Timber.tag(TAG).d("startAudio: starting playback + capture")
-        audioEngine.startPlayback()
-
-        audioEngine.startCapture { samples ->
-            if (webSocket !== ws) return@startCapture
-            var offset = 0
-            while (offset < samples.size) {
-                val end = minOf(offset + 1600, samples.size)
-                val chunk = samples.copyOfRange(offset, end)
-                if (ws.queueSize() > 64000 || !ws.send(pcm16ToLittleEndianBytes(chunk).toByteString())) {
-                    scope.launch {
-                        stop()
-                        fail("Voice upload stalled")
-                    }
-                    return@startCapture
-                }
-                offset = end
-            }
-        }
-    }
-
-    private fun pcm16ToLittleEndianBytes(samples: ShortArray): ByteArray {
-        val bytes = ByteArray(samples.size * 2)
-        for (i in samples.indices) {
-            val v = samples[i].toInt()
-            bytes[i * 2] = (v and 0xFF).toByte()
-            bytes[i * 2 + 1] = ((v shr 8) and 0xFF).toByte()
-        }
-        return bytes
-    }
-
-    private fun onAudioFrame(size: Int) {
-        val now = System.currentTimeMillis()
-        if (lastAudioFrameAt != 0L) maxFrameGapMs = maxOf(maxFrameGapMs, now - lastAudioFrameAt)
-        lastAudioFrameAt = now
-        turnFrames++
-        turnBytes += size
-        if (greetingPending) {
-            greetingPending = false
-            RemoteLog.i(
-                TAG,
-                "LATENCY greeting_first_audio_ms=${now - sessionStartedAt} (since session start)",
-            )
-        } else if (awaitingFirstAudio) {
-            awaitingFirstAudio = false
-            if (turnSentAt != 0L)
-                RemoteLog.i(
-                    TAG,
-                    "LATENCY time_to_first_audio_ms=${now - turnSentAt} (utterance sent -> first audio frame)",
-                )
-        }
-    }
-
-    private fun handleServerMessage(text: String) {
-        val message =
+        val id = ++generation
+        muted = false
+        _status.value = VoiceStatus.CONNECTING
+        startTimer(id, token)
+        scope.launch {
             try {
-                protocolJson.decodeFromString(VoiceServerMessage.serializer(), text)
-            } catch (e: Exception) {
-                Timber.tag(TAG).w(e, "Unrecognized voice server message: $text")
-                return
-            }
-
-        when (message) {
-            is VoiceServerMessage.Connected -> {
-                if (message.input_mode != "stream") {
-                    stop()
-                    fail("Voice server does not support continuous audio yet")
-                    return
-                }
-                if (_status.value == VoiceStatus.CONNECTING) {
-                    webSocket?.let { startAudio(it) }
-                    _status.value = VoiceStatus.ACTIVE
-                }
-                RemoteLog.i(
-                    TAG,
-                    "voice session connected: format=${message.format} sample_rate=${message.sample_rate} since_session_start_ms=${System.currentTimeMillis() - sessionStartedAt}",
-                )
-            }
-            is VoiceServerMessage.AudioTurnSubmitted -> {
-                utterances++
-                turnSentAt = System.currentTimeMillis()
-                awaitingFirstAudio = true
-                awaitingFirstDelta = true
-                turnFrames = 0
-                turnBytes = 0
-                maxFrameGapMs = 0L
-                RemoteLog.i(TAG, "server endpoint: audio_ms=${message.audio_ms} detector=earshot")
-            }
-            is VoiceServerMessage.UserTranscript -> {
-                if (turnSentAt != 0L)
-                    RemoteLog.i(
-                        TAG,
-                        "LATENCY transcript_ms=${System.currentTimeMillis() - turnSentAt} (server endpoint -> transcript)",
+                val bootstrap =
+                    protocolJson.decodeFromString<VoiceBootstrap>(
+                        VoxHttp.postJson("/v1/me/desktop-voice/sessions", "{}", token)
                     )
-                RemoteLog.i(TAG, "user transcript: ${message.text.length} chars")
-                _events.tryEmit(VoiceEvent.UserTranscript(message.text))
-            }
-            is VoiceServerMessage.Thinking -> {
-                currentTurnId = message.turn_id
-                _events.tryEmit(VoiceEvent.Thinking)
-            }
-            is VoiceServerMessage.TextDelta -> {
-                if (message.turn_id == currentTurnId) {
-                    if (awaitingFirstDelta) {
-                        awaitingFirstDelta = false
-                        if (turnSentAt != 0L)
-                            RemoteLog.i(
-                                TAG,
-                                "LATENCY first_text_delta_ms=${System.currentTimeMillis() - turnSentAt} (server endpoint -> first text)",
-                            )
-                    }
-                    _events.tryEmit(VoiceEvent.Delta(message.delta))
+                synchronized(this@VoiceSession) {
+                    if (id != generation) return@synchronized
+                    check(sessionStore.currentToken() == token) { "Signed out" }
+                    val request =
+                        Request.Builder()
+                            .url(bridgeVoiceUrl(BuildConfig.VOX_BRIDGE_BASE_URL))
+                            .build()
+                    webSocket =
+                        socketClient.newWebSocket(
+                            request,
+                            listener(id, token, bootstrap.ticket, bootstrap.session_id),
+                        )
                 }
-            }
-            is VoiceServerMessage.Done -> {
-                RemoteLog.i(
-                    TAG,
-                    "turn done: ${message.turn_id} frames=$turnFrames bytes=$turnBytes max_frame_gap_ms=$maxFrameGapMs total_ms=${if (turnSentAt != 0L) System.currentTimeMillis() - turnSentAt else -1} underruns_total=${audioEngine.underrunCount()}",
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                terminate(
+                    id,
+                    "Could not connect to Vox voice. Check your connection and try again.",
                 )
-                _events.tryEmit(VoiceEvent.Done)
             }
-            is VoiceServerMessage.Interrupted -> {
-                RemoteLog.i(TAG, "playback interrupted")
-                currentTurnId = null
-                audioEngine.clearPlayback()
-                _events.tryEmit(VoiceEvent.Interrupted)
-            }
-            is VoiceServerMessage.Error -> {
-                RemoteLog.w(TAG, "Voice server error: ${message.message}")
-                _events.tryEmit(VoiceEvent.Error(message.message))
-            }
-            is VoiceServerMessage.Pong -> {}
         }
     }
+
+    @Synchronized
+    fun stop() {
+        terminate(generation, null)
+    }
+
+    @Synchronized
+    private fun terminate(id: Long, error: String?) {
+        if (id != generation) return
+        generation++
+        timer?.cancel()
+        timer = null
+        val socket = webSocket
+        webSocket = null
+        socket?.send(
+            protocolJson.encodeToString(VoiceClientMessage.serializer(), VoiceClientMessage.Stop)
+        )
+        socket?.cancel()
+        audioEngine.release()
+        _status.value = if (error == null) VoiceStatus.IDLE else VoiceStatus.ERROR
+        if (error != null) _events.tryEmit(VoiceEvent.Error(error))
+    }
+
+    fun dispose() {
+        stop()
+        scope.cancel()
+    }
+
+    fun sendText(text: String): Boolean {
+        if (text.isBlank() || text.length > 8192 || _status.value != VoiceStatus.ACTIVE)
+            return false
+        val socket = webSocket ?: return false
+        val message =
+            protocolJson.encodeToString(
+                VoiceClientMessage.serializer(),
+                VoiceClientMessage.Text(text),
+            )
+        if (message.toByteArray(Charsets.UTF_8).size > 8192) return false
+        return socket.queueSize() < 16000 && socket.send(message)
+    }
+
+    private fun listener(id: Long, token: String, ticket: String, sessionId: String) =
+        object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                synchronized(this@VoiceSession) {
+                    if (id != generation) {
+                        webSocket.cancel()
+                        return
+                    }
+                    if (
+                        sessionStore.currentToken() != token ||
+                            !webSocket.send(
+                                protocolJson.encodeToString(
+                                    VoiceClientMessage.serializer(),
+                                    VoiceClientMessage.Start(ticket),
+                                )
+                            )
+                    )
+                        terminate(id, "Voice session could not start")
+                }
+            }
+
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                synchronized(this@VoiceSession) {
+                    if (id != generation) return
+                    try {
+                        check(text.length <= 8192) { "Oversized voice control" }
+                        when (
+                            val message =
+                                protocolJson.decodeFromString(VoiceServerMessage.serializer(), text)
+                        ) {
+                            is VoiceServerMessage.Connected -> {
+                                check(
+                                    _status.value == VoiceStatus.CONNECTING &&
+                                        message.isSupported() &&
+                                        message.session_id == sessionId
+                                ) {
+                                    "Unsupported voice audio"
+                                }
+                                startAudio(id, webSocket)
+                                _status.value = VoiceStatus.ACTIVE
+                            }
+                            is VoiceServerMessage.Mark -> {
+                                check(
+                                    _status.value == VoiceStatus.ACTIVE &&
+                                        message.name.isNotBlank() &&
+                                        message.name.length <= 128
+                                )
+                                audioEngine.mark(message.name)
+                            }
+                            is VoiceServerMessage.Clear -> {
+                                audioEngine.clearPlayback()
+                                _events.tryEmit(VoiceEvent.Interrupted)
+                            }
+                            is VoiceServerMessage.Error -> terminate(id, "Vox voice session failed")
+                        }
+                    } catch (_: Exception) {
+                        terminate(id, "Vox voice session ended unexpectedly")
+                    }
+                }
+            }
+
+            override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+                synchronized(this@VoiceSession) {
+                    if (id != generation) return
+                    try {
+                        check(_status.value == VoiceStatus.ACTIVE)
+                        audioEngine.enqueueMuLaw(bytes.toByteArray())
+                    } catch (_: Exception) {
+                        terminate(id, "Voice playback stalled. Try reconnecting.")
+                    }
+                }
+            }
+
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                terminate(id, "Voice connection lost. Try reconnecting.")
+            }
+
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                terminate(id, "Vox ended the call. Tap Retry to reconnect.")
+            }
+
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                terminate(id, "Vox ended the call. Tap Retry to reconnect.")
+            }
+        }
+
+    private fun startAudio(id: Long, socket: WebSocket) {
+        val packetizer = MuLawPacketizer()
+        var captureMuted = false
+        audioEngine.startPlayback {
+            scope.launch { terminate(id, "Another call took over audio. Reconnect when it ends.") }
+        }
+        audioEngine.startCapture(
+            onError = { scope.launch { terminate(id, "Microphone stopped. Try reconnecting.") } }
+        ) { samples ->
+            if (id != generation || webSocket !== socket) return@startCapture
+            val currentlyMuted = muted
+            if (captureMuted != currentlyMuted) {
+                packetizer.clear()
+                captureMuted = currentlyMuted
+            }
+            for (frame in
+                packetizer.accept(if (currentlyMuted) ShortArray(samples.size) else samples)) {
+                if (socket.queueSize() > 16000 || !socket.send(frame.toByteString())) {
+                    scope.launch { terminate(id, "Voice upload stalled. Try reconnecting.") }
+                    break
+                }
+            }
+        }
+    }
+
+    private fun startTimer(id: Long, token: String) {
+        val started = System.nanoTime()
+        var lastAuthCheck = 0L
+        timer =
+            Timer("vox-voice-session", true).also { timer ->
+                timer.scheduleAtFixedRate(
+                    object : TimerTask() {
+                        override fun run() {
+                            synchronized(this@VoiceSession) {
+                                if (id != generation) return
+                                if (
+                                    System.nanoTime() - lastAuthCheck > TimeUnit.SECONDS.toNanos(1)
+                                ) {
+                                    lastAuthCheck = System.nanoTime()
+                                    if (sessionStore.currentToken() != token) {
+                                        terminate(id, null)
+                                        return
+                                    }
+                                }
+                                if (
+                                    _status.value == VoiceStatus.CONNECTING &&
+                                        System.nanoTime() - started > TimeUnit.SECONDS.toNanos(15)
+                                ) {
+                                    terminate(id, "Vox voice connection timed out")
+                                    return
+                                }
+                                if (_status.value == VoiceStatus.ACTIVE) {
+                                    try {
+                                        val socket = webSocket ?: return
+                                        for (name in audioEngine.completedMarks()) {
+                                            check(
+                                                socket.queueSize() < 16000 &&
+                                                    socket.send(
+                                                        protocolJson.encodeToString(
+                                                            VoiceClientMessage.serializer(),
+                                                            VoiceClientMessage.PlaybackFinished(
+                                                                name
+                                                            ),
+                                                        )
+                                                    )
+                                            )
+                                        }
+                                    } catch (_: Exception) {
+                                        terminate(id, "Voice playback stopped. Try reconnecting.")
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    25,
+                    25,
+                )
+            }
+    }
+}
+
+internal fun bridgeVoiceUrl(base: String): String {
+    val url = base.trimEnd('/')
+    require(url.startsWith("https://") || url.startsWith("http://")) { "Invalid Bridge URL" }
+    return url.replaceFirst("https://", "wss://").replaceFirst("http://", "ws://") +
+        "/bridge/desktop/voice"
 }

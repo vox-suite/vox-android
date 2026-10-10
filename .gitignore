@@ -11,3 +11,5 @@ app/build/
 
 *.aab
 app/release/
+
+.kotlin/

@@ -27,13 +27,13 @@ class PulseTest {
     }
 
     @Test
-    fun coreCanvasDecodesNullResultsAndBoardMetadata() {
+    fun coreCanvasDecodesNullResultsAndIgnoresRetiredBoardMetadata() {
         val canvas =
             VoxJson.decodeFromString<PulseCanvas>(
                 """{"charts":[{"id":"c","title":"Music","definition":{"version":2,"measurement_id":"m","chart_type":"bar","bucket":"week","dimension":null,"period_days":30,"timezone":"Asia/Kolkata"},"result":null}],"legacy_boards":[{"id":"b","name":"Old board","chart_count":2}],"next_cursor":null}"""
             )
         assertNull(canvas.charts.single().result)
-        assertEquals(2, canvas.legacy_boards.single().chart_count)
+        assertEquals("m", canvas.charts.single().definition.measurement_id)
     }
 
     @Test
@@ -48,27 +48,14 @@ class PulseTest {
         assertEquals("bar", json.getValue("chart_type").jsonPrimitive.content)
         assertTrue(json.getValue("timezone").jsonPrimitive.content.isNotBlank())
         assertEquals(JsonNull, json.getValue("bucket"))
-        val draft =
-            PulseJson.parseToJsonElement(
-                    PulseJson.encodeToString(
-                        GoalDraft(
-                            title = "Bike",
-                            kind = "saving",
-                            direction = "at_least",
-                            target = 80000.0,
-                            unit = "INR",
-                        )
-                    )
-                )
-                .jsonObject
-        assertTrue(draft.getValue("timezone").jsonPrimitive.content.isNotBlank())
     }
 
     @Test
-    fun signedSavingsEntriesMustBeFiniteAndNonzero() {
-        assertNull(validEntry("NaN"))
-        assertNull(validEntry("Infinity"))
-        assertNull(validEntry("0"))
-        assertEquals(-100.0, validEntry("-100")!!, 0.0)
+    fun nonFinitePreviewPointsCannotBeSaved() {
+        assertFalse(PulseResult(points = listOf(PulsePoint("bad", Double.NaN))).canSave)
+        assertFalse(
+            PulseResult(points = listOf(PulsePoint("bad", Double.POSITIVE_INFINITY))).canSave
+        )
+        assertTrue(PulseResult(points = listOf(PulsePoint("refund", -100.0))).canSave)
     }
 }

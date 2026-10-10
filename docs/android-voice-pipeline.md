@@ -1,0 +1,13 @@
+# Android live voice through Bridge
+
+Android now uses the same Bridge playback session and provider pipeline as desktop and phone calls. It authenticates to Core with its existing user token, obtains a single-use ticket from `POST /v1/me/desktop-voice/sessions`, and sends that ticket as the first frame on `/bridge/desktop/voice`. The ticket is absent from the URL and no bearer token is sent to Bridge.
+
+Capture remains continuous at 16 kHz with platform echo cancellation and noise suppression where the device supports them. A packetizer preserves odd capture boundaries, downsamples to 8 kHz, and sends 160-byte mu-law frames. Replies play directly as 8 kHz PCM. Playback marks wait for the AudioTrack hardware playback position; `clear` flushes queued playback and drops old marks. STT, endpointing, model tools, TTS, and barge-in use the existing shared phone pipeline. There is no active-session recording cutoff.
+
+Socket output and playback queues are bounded. Stop, connection failure, microphone failure, handshake timeout, sign-out, and screen disposal release capture/playback and restore audio routing. Session generations reject late callbacks and bootstrap results. The call panel exposes mute, end-call, and typed messages. Muting sends silent audio frames so the server stream stays continuous. Leaving the foreground ends the call, audio-focus loss releases the session, and unexpected disconnects show a retry message. The app preserves the user’s volume setting.
+
+Set `VOX_BRIDGE_BASE_URL` in `local.properties` when Bridge uses a different origin from `VOX_API_BASE_URL`. Its fallback is the configured Core origin, matching desktop configuration. Core must have the desktop voice session migration and authenticated ticket routes deployed, and Bridge must have the `/bridge/desktop/voice` route deployed. Android supplies no desktop device binding: the shared agent can resolve an owned online desktop through its existing consent-controlled app tools. The handshake must acknowledge continuous streaming and match the authenticated session ID. The old MP3 decoder and JLayer dependency are removed.
+
+Local verification: debug APK build, 21 unit tests (including codec, odd packet boundaries, hardware-position mark tracking, clear handling, handshake contract, and playback acknowledgments), and lint (zero errors). Existing Pulse unit tests were updated to remove references to retired board/goal types while retaining null-data, zero, finite preview, range, and outbound-contract checks.
+
+No Android device was attached for this run. Native audio quality, actual AudioTrack flush timing, network recovery, and live provider/phone-to-desktop actions need device validation against matching deployed services.
