@@ -77,7 +77,6 @@ internal fun PulseContent(ui: PulseUiState, viewModel: PulseViewModel, bottomIns
                         Text(
                             when (ui.mode) {
                                 PulseMode.Library -> "Pulse"
-                                PulseMode.Board -> ui.board?.name ?: "Your board"
                                 PulseMode.Editor -> "Customize chart"
                                 else -> "Add a chart"
                             },
@@ -86,7 +85,7 @@ internal fun PulseContent(ui: PulseUiState, viewModel: PulseViewModel, bottomIns
                             color = Mist,
                             modifier = Modifier.weight(1f).padding(start = 8.dp),
                         )
-                        if (ui.mode == PulseMode.Library || ui.mode == PulseMode.Board)
+                        if (ui.mode == PulseMode.Library)
                             IconButton(
                                 onClick = { viewModel.reload(refresh = true) },
                                 enabled = !ui.busy,
@@ -102,7 +101,7 @@ internal fun PulseContent(ui: PulseUiState, viewModel: PulseViewModel, bottomIns
                             }
                     }
                     HorizontalDivider(color = BorderSubtle)
-                    if (ui.mode in setOf(PulseMode.Suggestions, PulseMode.Ask, PulseMode.Goal)) {
+                    if (ui.mode in setOf(PulseMode.Suggestions, PulseMode.Measurements)) {
                         Row(
                             Modifier.fillMaxWidth()
                                 .horizontalScroll(rememberScrollState())
@@ -111,8 +110,7 @@ internal fun PulseContent(ui: PulseUiState, viewModel: PulseViewModel, bottomIns
                         ) {
                             listOf(
                                     PulseMode.Suggestions to "Suggestions",
-                                    PulseMode.Ask to "Ask Pulse",
-                                    PulseMode.Goal to "Goal",
+                                    PulseMode.Measurements to "Measurements",
                                 )
                                 .forEach { (mode, label) ->
                                     FilterChip(
@@ -129,9 +127,7 @@ internal fun PulseContent(ui: PulseUiState, viewModel: PulseViewModel, bottomIns
                         PulseMode.Library -> PulseLibrary(ui, viewModel)
                         PulseMode.Suggestions -> PulseSuggestions(ui, viewModel)
                         PulseMode.Editor -> PulseEditor(ui, viewModel)
-                        PulseMode.Ask,
-                        PulseMode.Goal -> PulseComposer(ui, viewModel)
-                        PulseMode.Board -> PulseBoard(ui)
+                        PulseMode.Measurements -> PulseMeasurements(ui, viewModel)
                     }
                 }
             }

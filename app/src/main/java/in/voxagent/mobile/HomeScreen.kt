@@ -112,16 +112,18 @@ internal fun HomeScreen(
                 onCollections = { timelineCollections = it },
             )
             sheet?.let { target ->
-                SpanSheet(
-                    target = target,
-                    collections = timelineCollections,
-                    token = { latestToken },
-                    onClose = { sheet = null },
-                    onSaved = { timelineReload += 1 },
+                val event = (target as? SheetTarget.Edit)?.span
+                if (event != null) androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { sheet = null }, title = { androidx.compose.material3.Text(event.title) },
+                    text = { androidx.compose.material3.Text(event.notes + "\n" + (event.data?.toString() ?: "")) },
+                    confirmButton = { androidx.compose.material3.TextButton(onClick = { sheet = null }) { androidx.compose.material3.Text("Close") } }
                 )
             }
         }
 
+        if (destination == Destination.Updates && token != null) {
+            `in`.voxagent.mobile.updates.UpdatesScreen(token = { latestToken }, bottomInset = 88.dp)
+        }
         if (destination == Destination.Pulse && token != null) {
             PulseScreen(token = { latestToken }, bottomInset = 88.dp)
         }

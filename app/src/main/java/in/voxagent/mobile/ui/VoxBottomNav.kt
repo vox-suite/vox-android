@@ -151,6 +151,10 @@ fun VoxBottomNav(
                             modifier = Modifier.size(20.dp),
                         )
                     }
+                    NavDestinationButton(compact = compact, selected = destination == Destination.Updates,
+                        description = "Updates", onClick = { onDestination(Destination.Updates) }) { tint ->
+                        Text("◉", color = tint, modifier = Modifier.size(20.dp))
+                    }
                     NavDestinationButton(
                         compact = compact,
                         selected = destination == Destination.Connections,

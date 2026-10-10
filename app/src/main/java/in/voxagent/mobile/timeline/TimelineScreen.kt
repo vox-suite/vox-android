@@ -64,7 +64,6 @@ fun TimelineScreen(
     val vm: TimelineViewModel =
         viewModel(factory = viewModelFactory { initializer { TimelineViewModel(token) } })
     val ui by vm.ui.collectAsState()
-    val cachedDays by `in`.voxagent.mobile.spans.SpanDayCache.entries.collectAsState()
 
     LaunchedEffect(reloadSignal) { if (reloadSignal > 0) vm.reload() }
     LaunchedEffect(ui.collections) { onCollections(ui.collections) }
@@ -72,12 +71,12 @@ fun TimelineScreen(
         val live = LiveHub.get(token)
         live.start()
         live.events.collect { event ->
-            if (event.type.startsWith("span_") || event.type == "live_reconnected") vm.reload()
+            if (event.type == "timeline_updated" || event.type == "live_reconnected") vm.reload()
         }
     }
     LaunchedEffect(Unit) {
         while (true) {
-            delay(15_000)
+            delay(60_000)
             vm.revalidate()
         }
     }
@@ -85,7 +84,7 @@ fun TimelineScreen(
     VoxDarkScreen {
         Column(Modifier.fillMaxSize().statusBarsPadding().padding(bottom = bottomInset)) {
             Header(ui, vm)
-            CollectionChips(ui, vm)
+            GroupChips(ui, vm)
             if (ui.error.isNotEmpty()) VoxErrorBar(ui.error, onRetry = vm::reload)
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 Column(Modifier.fillMaxSize()) {
@@ -93,14 +92,8 @@ fun TimelineScreen(
                         if (ui.mode == ViewMode.Month) MonthGrid(ui.anchor, ui.dayCounts, vm::openDay)
                         else PlanningTimeline(ui.days, ui.spans, onOpenSpan, loading = ui.loading)
                     }
-                    if (ui.mode != ViewMode.Month) {
-                        Row(Modifier.horizontalScroll(rememberScrollState())) {
-                            ui.days.filter { cachedDays[DayKey(ui.collectionId.orEmpty(), it)]?.hasMore == true }.forEach { day ->
-                                androidx.compose.material3.TextButton(onClick = { vm.loadMore(day) }, enabled = cachedDays[DayKey(ui.collectionId.orEmpty(), day)]?.loading != true) {
-                                    Text("Load more · ${day.monthValue}/${day.dayOfMonth}")
-                                }
-                            }
-                        }
+                    if (ui.mode != ViewMode.Month && ui.hasMore) {
+                        androidx.compose.material3.TextButton(onClick = { vm.loadMore() }, enabled = !ui.loading) { Text("Load more entries") }
                     }
                 }
             }
@@ -254,17 +247,16 @@ private fun Glyph(text: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun CollectionChips(ui: TimelineUi, vm: TimelineViewModel) {
-    if (ui.collections.isEmpty()) return
+private fun GroupChips(ui: TimelineUi, vm: TimelineViewModel) {
     Row(
         Modifier.fillMaxWidth()
             .horizontalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        VoxChip("All", ui.collectionId == null) { vm.selectCollection(null) }
-        ui.collections.forEach { c ->
-            VoxChip(c.name, ui.collectionId == c.id) { vm.selectCollection(c.id) }
+        VoxChip("All", ui.groupValue == null) { vm.selectGroup(null) }
+        ui.groups.forEach { c ->
+            VoxChip(c.label, ui.groupValue == c.value) { vm.selectGroup(c.value) }
         }
     }
 }

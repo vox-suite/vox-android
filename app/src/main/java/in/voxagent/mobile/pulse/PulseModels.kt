@@ -103,22 +103,5 @@ data class SavedPulseChart(
     val result: PulseResult? = null,
 )
 
-@Serializable data class LegacyBoard(val id: String, val name: String, val chart_count: Int = 0)
-
 @Serializable
-data class PulseCanvas(
-    val charts: List<SavedPulseChart> = emptyList(),
-    val legacy_boards: List<LegacyBoard> = emptyList(),
-    val next_cursor: String? = null,
-)
-
-@Serializable data class LegacyChart(val id: String, val title: String, val chart_type: String)
-
-@Serializable
-data class ComposeResponse(
-    val reply: String,
-    val title: String? = null,
-    val definition: PulseDefinition? = null,
-    val measurement: Measurement? = null,
-    val preview: PulseResult? = null,
-)
+ data class PulseCanvas(val charts: List<SavedPulseChart> = emptyList(), val next_cursor: String? = null)

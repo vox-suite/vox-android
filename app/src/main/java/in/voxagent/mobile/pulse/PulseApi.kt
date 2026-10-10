@@ -48,8 +48,7 @@ object PulseApi {
                 token,
                 buildJsonObject {
                         put("timezone", timezone)
-                        put("refresh", false)
-                        put("more", more)
+                        put("refresh", more)
                     }
                     .toString(),
                 200_000,
@@ -89,95 +88,8 @@ object PulseApi {
         request("POST", "/v1/me/pulse/dismissals", token, PulseJson.encodeToString(definition))
     }
 
-    suspend fun compose(
-        token: String,
-        messages: List<ComposeMessage>,
-        current: PulseDefinition?,
-        title: String?,
-    ): ComposeResponse =
-        VoxJson.decodeFromString(
-            request(
-                "POST",
-                "/v1/me/pulse/compose",
-                token,
-                buildJsonObject {
-                        put("timezone", timezone)
-                        put("messages", PulseJson.encodeToJsonElement(messages))
-                        put(
-                            "current",
-                            current?.let { PulseJson.encodeToJsonElement(it) } ?: JsonNull,
-                        )
-                        put("current_title", title?.let { JsonPrimitive(it) } ?: JsonNull)
-                    }
-                    .toString(),
-                150_000,
-            )
-        )
-
-    suspend fun goals(token: String): List<GoalView> =
-        VoxJson.decodeFromString(
-            request(
-                "GET",
-                "/v1/me/pulse/goals" + query("timezone" to timezone),
-                token,
-                timeout = 60_000,
-            )
-        )
-
-    suspend fun composeGoal(
-        token: String,
-        messages: List<ComposeMessage>,
-        current: GoalDraft?,
-    ): GoalComposeResponse =
-        VoxJson.decodeFromString(
-            request(
-                "POST",
-                "/v1/me/pulse/goals/compose",
-                token,
-                buildJsonObject {
-                        put("timezone", timezone)
-                        put("messages", PulseJson.encodeToJsonElement(messages))
-                        put(
-                            "current",
-                            current?.let { PulseJson.encodeToJsonElement(it) } ?: JsonNull,
-                        )
-                    }
-                    .toString(),
-                150_000,
-            )
-        )
-
-    suspend fun createGoal(token: String, draft: GoalDraft): GoalView =
-        VoxJson.decodeFromString(
-            request("POST", "/v1/me/pulse/goals", token, PulseJson.encodeToString(draft), 60_000)
-        )
-
-    suspend fun removeGoal(token: String, id: String) {
-        request("DELETE", "/v1/me/pulse/goals/$id", token)
-    }
-
-    suspend fun entry(token: String, id: String, amount: Double): GoalView =
-        VoxJson.decodeFromString(
-            request(
-                "POST",
-                "/v1/me/pulse/goals/$id/entries",
-                token,
-                buildJsonObject {
-                        put("timezone", timezone)
-                        put("amount", amount)
-                        put("note", JsonNull)
-                    }
-                    .toString(),
-            )
-        )
-
-    suspend fun board(token: String, id: String): BoardDetails =
-        VoxJson.decodeFromString(request("GET", "/v1/me/charts/boards/$id", token))
-
-    suspend fun boardData(token: String, id: String): List<BoardResult> =
-        VoxJson.decodeFromString(
-            request("GET", "/v1/me/charts/boards/$id/data", token, timeout = 60_000)
-        )
+    suspend fun measurements(token: String): List<Measurement> =
+        VoxJson.decodeFromString(request("GET", "/v1/me/pulse/measurements" + query("timezone" to timezone), token))
 
     private suspend fun request(
         method: String,

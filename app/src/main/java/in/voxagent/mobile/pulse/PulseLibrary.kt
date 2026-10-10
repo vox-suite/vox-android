@@ -21,10 +21,7 @@ internal fun ColumnScope.PulseLibrary(ui: PulseUiState, viewModel: PulseViewMode
         PulseLoading("Loading Pulse…")
         return
     }
-    val empty =
-        ui.canvas?.charts.isNullOrEmpty() &&
-            ui.canvas?.legacy_boards.isNullOrEmpty() &&
-            ui.goals.isEmpty()
+    val empty = ui.canvas?.charts.isNullOrEmpty()
     if (empty && ui.error == null) {
         Column(
             Modifier.weight(1f).fillMaxWidth().padding(24.dp),
@@ -57,15 +54,6 @@ internal fun ColumnScope.PulseLibrary(ui: PulseUiState, viewModel: PulseViewMode
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        if (ui.goals.isNotEmpty()) item { Text("GOALS", color = SmokeDark, fontSize = 11.sp) }
-        items(ui.goals, key = { "goal:${it.id}" }) { goal ->
-            PulseGoalCard(
-                goal,
-                busy = ui.busy,
-                onEntry = { text, onSaved -> viewModel.entry(goal, text, onSaved) },
-                onRemove = { viewModel.removeGoal(goal) },
-            )
-        }
         items(ui.canvas?.charts.orEmpty(), key = { "chart:${it.id}" }) { chart ->
             val override = ui.chartPreviews[chart.id]
             val definition = override?.definition ?: chart.definition
@@ -121,56 +109,5 @@ internal fun ColumnScope.PulseLibrary(ui: PulseUiState, viewModel: PulseViewMode
                     Text("Load more")
                 }
             }
-        if (!ui.canvas?.legacy_boards.isNullOrEmpty())
-            item { Text("YOUR BOARDS", color = SmokeDark, fontSize = 11.sp) }
-        items(ui.canvas?.legacy_boards.orEmpty(), key = { "board:${it.id}" }) { board ->
-            Surface(
-                onClick = { viewModel.openBoard(board.id) },
-                shape = RoundedCornerShape(12.dp),
-                color = Obsidian,
-                border = BorderStroke(1.dp, BorderSubtle),
-            ) {
-                Row(
-                    Modifier.fillMaxWidth().padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(board.name, color = Mist)
-                        Text("${board.chart_count} charts", fontSize = 12.sp, color = SmokeDark)
-                    }
-                    Text("→", color = Mist)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-internal fun ColumnScope.PulseBoard(ui: PulseUiState) {
-    if (ui.busy) {
-        PulseLoading("Loading board…")
-        return
-    }
-    LazyColumn(
-        Modifier.weight(1f),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        if (ui.board?.charts?.isEmpty() == true)
-            item { Text("This board has no charts", color = SmokeDark) }
-        items(ui.board?.charts.orEmpty(), key = { it.id }) { chart ->
-            val result = ui.boardResults.find { it.chart_id == chart.id }
-            PulseChartCard(
-                chart.title,
-                PulseDefinition(
-                    measurement_id = "legacy:${chart.id}",
-                    chart_type = chart.chart_type,
-                    bucket = if (chart.chart_type == "pie") null else "day",
-                ),
-                result?.let {
-                    PulseResult(points = it.data_points, error = it.error, record_count = -1)
-                },
-            )
-        }
     }
 }

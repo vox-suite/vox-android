@@ -61,6 +61,7 @@ import `in`.voxagent.mobile.ui.theme.VoxSpaceGroteskFontFamily
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun ConnectionDetailSheet(
+    token: () -> String?,
     connector: ConnectorDescriptor,
     connection: ConnectionItem?,
     brand: BrandMeta,
@@ -183,9 +184,13 @@ internal fun ConnectionDetailSheet(
                 )
             }
 
+            if (connector.id == "gmail" && connection != null) { GmailHistorySection(token) }
+
             if (connector.id == "playstation") {
                 PlayStationTokenInput(npssoToken, { npssoToken = it }, onOpenExternal)
             }
+
+            if (connector.id in setOf("youtube", "youtube_history", "maps_timeline")) { TakeoutImportSection(token,onOpenExternal) }
 
             ConnectionConsent(consent, { consent = it })
 

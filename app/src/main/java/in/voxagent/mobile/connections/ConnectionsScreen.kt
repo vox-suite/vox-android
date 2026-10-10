@@ -151,6 +151,7 @@ fun ConnectionsScreen(token: () -> String?, bottomInset: Dp = 88.dp, onBack: (()
         if (openApp != null) {
             val brand = getBrandMeta(openApp.id)
             ConnectionDetailSheet(
+                token = token,
                 connector = openApp,
                 connection = openConnection,
                 brand = brand,

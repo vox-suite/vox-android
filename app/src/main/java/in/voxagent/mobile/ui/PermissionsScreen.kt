@@ -24,7 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import `in`.voxagent.mobile.sms.SMS_RETENTION_DAYS
 import `in`.voxagent.mobile.ui.theme.CoralPulse
 import `in`.voxagent.mobile.ui.theme.GraphiteDark
 import `in`.voxagent.mobile.ui.theme.Iron
@@ -34,39 +33,19 @@ import `in`.voxagent.mobile.ui.theme.VoxFunnelDisplayFontFamily
 
 private data class PermissionDetail(val title: String, val body: String)
 
-private val smsDetails =
-    listOf(
-        PermissionDetail(
-            "What's sent to a model",
-            "Message content is sent to an AI model (Gemini) to classify what each message is about. Nothing is sent for messages that look like one-time passcodes or verification codes — those are filtered out on this device before upload.",
-        ),
-        PermissionDetail(
-            "What's kept",
-            "Extracted events (title, category, time) appear in your Vox Timeline. Retained for $SMS_RETENTION_DAYS days by default, then automatically deleted.",
-        ),
-        PermissionDetail(
-            "Your control",
-            "Turn this off at any time. Revoking stops new messages from being read; nothing already processed is retroactively affected.",
-        ),
-    )
-
 @Composable
 fun PermissionsScreen(
     micOn: Boolean,
-    smsOn: Boolean,
     locationOn: Boolean,
     busy: Boolean,
     errorMessage: String,
     onToggleMic: (Boolean) -> Unit,
-    onToggleSms: (Boolean) -> Unit,
     onToggleLocation: (Boolean) -> Unit,
-    onSyncSms: () -> Unit,
-    onBackfillSms: () -> Unit,
     onOpenSettings: () -> Unit,
     onAllowAll: () -> Unit,
     onClose: () -> Unit,
 ) {
-    val allOn = micOn && smsOn && locationOn
+    val allOn = micOn && locationOn
     VoxDarkScreen {
         Column(
             modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -99,21 +78,6 @@ fun PermissionsScreen(
                     checked = micOn,
                     enabled = !busy,
                     onCheckedChange = onToggleMic,
-                )
-                PermissionRow(
-                    title = "SMS",
-                    summary =
-                        "Vox reads your text messages to spot bills, deliveries, appointments and other things that need action, and adds them to your Timeline.",
-                    details = smsDetails,
-                    checked = smsOn,
-                    enabled = !busy,
-                    onCheckedChange = onToggleSms,
-                    actions =
-                        if (smsOn) {
-                            listOf("Sync now" to onSyncSms, "Sync last 3 months" to onBackfillSms)
-                        } else {
-                            emptyList()
-                        },
                 )
                 PermissionRow(
                     title = "Location",

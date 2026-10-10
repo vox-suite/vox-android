@@ -9,6 +9,7 @@ enum class Destination {
     Spaces,
     Pulse,
     Connections,
+    Updates,
 }
 
 enum class TalkState {

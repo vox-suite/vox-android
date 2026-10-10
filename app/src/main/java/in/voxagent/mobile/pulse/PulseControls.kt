@@ -23,7 +23,7 @@ internal fun PulseRangeControls(
             Modifier.horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            listOf(7 to "7 days", 30 to "30 days", 90 to "90 days", 3650 to "All").forEach {
+            listOf(7 to "7 days", 30 to "30 days", 90 to "90 days", 366 to "Year").forEach {
                 (days, label) ->
                 FilterChip(
                     selected = definition.period_days == days,
@@ -33,7 +33,7 @@ internal fun PulseRangeControls(
                 )
             }
         }
-        if (definition.period_days < 3650)
+        if (definition.period_days < 366)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TextButton(
                     onClick = {
@@ -43,7 +43,7 @@ internal fun PulseRangeControls(
                             )
                         )
                     },
-                    enabled = enabled,
+                    enabled = enabled && definition.offset_days + 2 * definition.period_days <= 366,
                 ) {
                     Text("Earlier", fontSize = 11.sp)
                 }

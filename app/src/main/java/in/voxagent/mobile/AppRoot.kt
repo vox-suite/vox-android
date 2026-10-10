@@ -25,10 +25,6 @@ import `in`.voxagent.mobile.auth.AuthManager
 import `in`.voxagent.mobile.net.VoxHttp
 import `in`.voxagent.mobile.phone.PhoneApi
 import `in`.voxagent.mobile.phone.PhoneStatus
-import `in`.voxagent.mobile.sms.SmsConsentApi
-import `in`.voxagent.mobile.sms.SmsConsentStatus
-import `in`.voxagent.mobile.sms.SmsSyncStore
-import `in`.voxagent.mobile.sms.SmsSyncWorker
 import `in`.voxagent.mobile.ui.PermissionsScreen
 import `in`.voxagent.mobile.ui.PhoneVerificationFlow
 import kotlinx.coroutines.launch
@@ -46,36 +42,13 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
     }
     var phoneStatus by remember { mutableStateOf<PhoneStatus?>(null) }
     var phoneVerifySkipped by remember { mutableStateOf(false) }
-    var consentStatus by remember { mutableStateOf<SmsConsentStatus?>(null) }
-    var smsPermissionGranted by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(activity, Manifest.permission.READ_SMS) ==
-                PackageManager.PERMISSION_GRANTED
-        )
-    }
     var statusMessage by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
 
-    LaunchedEffect(smsPermissionGranted, consentStatus) {
-        if (smsPermissionGranted && consentStatus?.granted == true) {
-            schedulePeriodicSync(activity)
-
-            if (SmsSyncStore.backfillVersion(activity) < SmsSyncWorker.BACKFILL_VERSION) {
-                triggerBackfillSync(activity)
-            }
-        } else if (consentStatus?.granted == false) {
-            WorkManager.getInstance(activity).cancelUniqueWork(SmsSyncWorker.UNIQUE_WORK_NAME)
-        }
+    LaunchedEffect(Unit) {
+        val work = WorkManager.getInstance(activity)
+        listOf("sms_sync", "sms_sync_now", "sms_backfill").forEach(work::cancelUniqueWork)
     }
-
-    val permissionLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            smsPermissionGranted = granted
-            if (granted) {
-                schedulePeriodicSync(activity)
-                triggerImmediateSync(activity)
-            }
-        }
 
     var locationPermissionGranted by remember {
         mutableStateOf(
@@ -99,11 +72,6 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
         rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
             result ->
             micGranted = result[Manifest.permission.RECORD_AUDIO] ?: micGranted
-            if (result[Manifest.permission.READ_SMS] == true) {
-                smsPermissionGranted = true
-                schedulePeriodicSync(activity)
-                triggerImmediateSync(activity)
-            }
             val fine = result[Manifest.permission.ACCESS_FINE_LOCATION] ?: locationPermissionGranted
             locationPermissionGranted = fine
         }
@@ -116,7 +84,6 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 micGranted = granted(Manifest.permission.RECORD_AUDIO)
-                smsPermissionGranted = granted(Manifest.permission.READ_SMS)
                 locationPermissionGranted = granted(Manifest.permission.ACCESS_FINE_LOCATION)
             }
         }
@@ -128,7 +95,6 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
         if (!signedIn) return@LaunchedEffect
         val token = authManager.currentToken() ?: return@LaunchedEffect
         runCatching { PhoneApi.status(token) }.onSuccess { phoneStatus = it }
-        runCatching { SmsConsentApi.getStatus(token) }.onSuccess { consentStatus = it }
     }
 
     if (!signedIn) {
@@ -170,18 +136,13 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
         return
     }
 
-    val allPermissionsSet =
-        micGranted &&
-            smsPermissionGranted &&
-            locationPermissionGranted &&
-            consentStatus?.granted == true
+    val allPermissionsSet = micGranted && locationPermissionGranted
     LaunchedEffect(allPermissionsSet) {
         if (allPermissionsSet && !permissionsPromptForced) permissionsPromptOpen = false
     }
 
     if (
         permissionsPromptOpen &&
-            consentStatus != null &&
             (permissionsPromptForced || !allPermissionsSet)
     ) {
         fun saving(block: suspend (String) -> Unit) {
@@ -196,7 +157,6 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
         }
         PermissionsScreen(
             micOn = micGranted,
-            smsOn = consentStatus?.granted == true && smsPermissionGranted,
             locationOn = locationPermissionGranted,
             busy = permissionsPromptBusy,
             errorMessage = permissionsPromptError,
@@ -205,25 +165,6 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
                     runtimePermissionsLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
                 } else {
                     openAppSettings(activity)
-                }
-            },
-            onToggleSms = { on ->
-                saving { token ->
-                    if (on) {
-                        if (consentStatus?.granted != true)
-                            consentStatus = SmsConsentApi.grant(token)
-                        if (smsPermissionGranted) {
-                            schedulePeriodicSync(activity)
-                            triggerImmediateSync(activity)
-                        } else {
-                            permissionLauncher.launch(Manifest.permission.READ_SMS)
-                        }
-                    } else {
-                        SmsConsentApi.revoke(token)
-                        consentStatus = consentStatus?.copy(granted = false)
-                        WorkManager.getInstance(activity)
-                            .cancelUniqueWork(SmsSyncWorker.UNIQUE_WORK_NAME)
-                    }
                 }
             },
             onToggleLocation = { on ->
@@ -238,15 +179,11 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
                     openAppSettings(activity)
                 }
             },
-            onSyncSms = { triggerImmediateSync(activity) },
-            onBackfillSms = { triggerBackfillSync(activity) },
             onOpenSettings = { openAppSettings(activity) },
             onAllowAll = {
                 saving { token ->
-                    if (consentStatus?.granted != true) consentStatus = SmsConsentApi.grant(token)
                     val wanted = buildList {
                         add(Manifest.permission.RECORD_AUDIO)
-                        add(Manifest.permission.READ_SMS)
                         add(Manifest.permission.ACCESS_FINE_LOCATION)
                         add(Manifest.permission.ACCESS_COARSE_LOCATION)
                     }
@@ -283,7 +220,6 @@ fun AppRoot(authManager: AuthManager, activity: ComponentActivity) {
         onSignOut = {
             authManager.signOut()
             signedIn = false
-            consentStatus = null
         },
         onSyncProfile = {
             scope.launch {

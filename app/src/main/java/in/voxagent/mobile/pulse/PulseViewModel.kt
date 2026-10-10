@@ -13,7 +13,6 @@ class PulseViewModel(private val token: () -> String?) : ViewModel() {
     private var workJob: Job? = null
     private val chartJobs = mutableMapOf<String, Job>()
     private val suggestionKeys = mutableMapOf<PulseSuggestion, String>()
-    private var boardId: String? = null
     private var generation = 0
     private var askDraft: PulseUiState? = null
 
@@ -88,6 +87,7 @@ class PulseViewModel(private val token: () -> String?) : ViewModel() {
         when (mode) {
             PulseMode.Library -> reload()
             PulseMode.Suggestions -> if (state.value.discovery == null) discover()
+            PulseMode.Measurements -> loadMeasurements()
             else -> Unit
         }
     }
@@ -96,41 +96,14 @@ class PulseViewModel(private val token: () -> String?) : ViewModel() {
         go(if (state.value.mode == PulseMode.Editor) PulseMode.Suggestions else PulseMode.Library)
 
     fun reload(refresh: Boolean = false, more: Boolean = false) {
-        if (state.value.mode == PulseMode.Board) {
-            boardId?.let { openBoard(it) }
-            return
-        }
         if (refresh) {
             chartJobs.values.forEach { it.cancel() }
             chartJobs.clear()
         }
         val cursor = if (more) state.value.canvas?.next_cursor ?: return else null
         work { bearer ->
-            coroutineScope {
-                val canvas = async { PulseApi.canvas(bearer, refresh, cursor) }
-                val goals = async {
-                    try {
-                        Result.success(PulseApi.goals(bearer))
-                    } catch (e: Exception) {
-                        if (e is CancellationException) throw e
-                        Result.failure(e)
-                    }
-                }
-                val next = canvas.await()
-                val nextGoals = goals.await()
-                state.update { current ->
-                    val charts =
-                        if (more)
-                            (current.canvas?.charts.orEmpty() + next.charts).distinctBy { it.id }
-                        else next.charts
-                    current.copy(
-                        canvas = next.copy(charts = charts),
-                        goals = nextGoals.getOrDefault(current.goals),
-                        error = nextGoals.exceptionOrNull()?.message,
-                        chartPreviews = if (refresh) emptyMap() else current.chartPreviews,
-                    )
-                }
-            }
+            val next = PulseApi.canvas(bearer, refresh, cursor)
+            state.update { current -> current.copy(canvas = next.copy(charts = if (more) (current.canvas?.charts.orEmpty() + next.charts).distinctBy { it.id } else next.charts), chartPreviews = if (refresh) emptyMap() else current.chartPreviews) }
         }
     }
 
@@ -142,9 +115,7 @@ class PulseViewModel(private val token: () -> String?) : ViewModel() {
     fun retry() {
         when (state.value.mode) {
             PulseMode.Suggestions -> discover()
-            PulseMode.Editor,
-            PulseMode.Ask -> state.value.definition?.let { change(it) }
-            PulseMode.Goal -> state.update { it.copy(error = null) }
+            PulseMode.Editor -> state.value.definition?.let { change(it) }
             else -> reload()
         }
     }
@@ -256,75 +227,6 @@ class PulseViewModel(private val token: () -> String?) : ViewModel() {
         }
     }
 
-    fun send(text: String, onSent: () -> Unit) {
-        val current = state.value
-        if (text.isBlank() || current.busy) return
-        val goal = current.mode == PulseMode.Goal
-        val messages =
-            (if (goal) current.goalMessages else current.messages) +
-                ComposeMessage("user", text.trim().take(500))
-        work { bearer ->
-            if (goal) {
-                val response = PulseApi.composeGoal(bearer, messages, current.goalDraft)
-                state.update {
-                    it.copy(
-                        goalMessages = messages + ComposeMessage("assistant", response.reply),
-                        goalDraft = response.draft ?: it.goalDraft,
-                        goalPreview =
-                            if (response.draft != null) response.preview else it.goalPreview,
-                    )
-                }
-            } else {
-                val response =
-                    PulseApi.compose(
-                        bearer,
-                        messages,
-                        current.definition,
-                        current.title.ifBlank { null },
-                    )
-                state.update {
-                    it.copy(
-                        messages = messages + ComposeMessage("assistant", response.reply),
-                        title = response.title ?: it.title,
-                        definition = response.definition ?: it.definition,
-                        measurement = response.measurement ?: it.measurement,
-                        preview = if (response.definition != null) response.preview else it.preview,
-                        saveKey = UUID.randomUUID().toString(),
-                    )
-                }
-            }
-            onSent()
-        }
-    }
-
-    fun createGoal() {
-        val draft = state.value.goalDraft ?: return
-        if (state.value.busy) return
-        work(saving = true) { bearer ->
-            val created = PulseApi.createGoal(bearer, draft)
-            state.update {
-                it.copy(
-                    mode = PulseMode.Library,
-                    goals = it.goals + created,
-                    goalDraft = null,
-                    goalPreview = null,
-                    goalMessages = emptyList(),
-                )
-            }
-        }
-    }
-
-    fun entry(goal: GoalView, text: String, onSaved: () -> Unit) {
-        val amount = validEntry(text) ?: return
-        work(saving = true) { bearer ->
-            val updated = PulseApi.entry(bearer, goal.id, amount)
-            state.update {
-                it.copy(goals = it.goals.map { g -> if (g.id == updated.id) updated else g })
-            }
-            onSaved()
-        }
-    }
-
     fun removeChart(chart: SavedPulseChart) =
         work(saving = true) { bearer ->
             PulseApi.deleteChart(bearer, chart.id)
@@ -336,23 +238,13 @@ class PulseViewModel(private val token: () -> String?) : ViewModel() {
             }
         }
 
-    fun removeGoal(goal: GoalView) =
-        work(saving = true) { bearer ->
-            PulseApi.removeGoal(bearer, goal.id)
-            state.update { it.copy(goals = it.goals.filter { g -> g.id != goal.id }) }
-        }
-
-    fun openBoard(id: String) {
-        boardId = id
-        state.update { it.copy(mode = PulseMode.Board, board = null, boardResults = emptyList()) }
-        work { bearer ->
-            coroutineScope {
-                val board = async { PulseApi.board(bearer, id) }
-                val data = async { PulseApi.boardData(bearer, id) }
-                val details = board.await()
-                val results = data.await()
-                state.update { it.copy(board = details, boardResults = results) }
-            }
-        }
+    private fun loadMeasurements() = work { bearer ->
+        val measurements = PulseApi.measurements(bearer)
+        state.update { it.copy(measurements = measurements) }
+    }
+    fun choose(measurement: Measurement) {
+        val definition = PulseDefinition(measurement_id = measurement.id, bucket = measurement.buckets.firstOrNull() ?: "day")
+        state.update { it.copy(mode = PulseMode.Editor, measurement = measurement, definition = definition, title = measurement.title, preview = null) }
+        change(definition)
     }
 }

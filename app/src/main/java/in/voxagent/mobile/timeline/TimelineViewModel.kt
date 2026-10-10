@@ -40,6 +40,8 @@ data class TimelineUi(
     val frontierMs: Long? = null,
     val collections: List<SpanCollection> = emptyList(),
     val collectionId: String? = null,
+    val groups: List<`in`.voxagent.mobile.contracts.TimelineGroup> = emptyList(),
+    val groupValue: String? = null,
     val loading: Boolean = true,
     val error: String = "",
 ) {
@@ -61,21 +63,11 @@ class TimelineViewModel(private val token: () -> String?) : ViewModel() {
     private var loadJob: Job? = null
 
     init {
-        loadCollections()
+        loadGroups()
         reload()
     }
 
-    fun revalidate() {
-        val bearer = token() ?: return
-        viewModelScope.launch {
-            try {
-                if (SpanDayCache.revalidate(bearer)) reload()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-            }
-        }
-    }
+    fun revalidate() { if (!_ui.value.loading) reload() }
 
     fun setMode(mode: ViewMode) {
         _ui.update { s ->
@@ -131,83 +123,51 @@ class TimelineViewModel(private val token: () -> String?) : ViewModel() {
         reload()
     }
 
-    fun selectCollection(id: String?) {
-        _ui.update { it.copy(collectionId = id) }
+    fun selectGroup(value: String?) {
+        _ui.update { it.copy(groupValue = value) }
         reload()
     }
-
-    fun reload() {
+    private var cursor: String? = null
+    fun reload() = load(false)
+    fun loadMore(day: LocalDate = _ui.value.selectedDay) = load(true)
+    private fun load(more: Boolean) {
         val bearer = token() ?: return
-        val s = _ui.value
-        val days = s.days
+        if (more && (_ui.value.loading || cursor == null)) return
+        val state = _ui.value
+        val days = if (state.mode == ViewMode.Month) monthGridDays(state.anchor) else state.days
         loadJob?.cancel()
-        _ui.update { it.copy(loading = true) }
-        loadJob =
-            viewModelScope.launch {
-                try {
-                    val scope = s.collectionId.orEmpty()
-                    if (s.mode == ViewMode.Month) {
-                        SpanDayCache.loadCounts(bearer, scope, days.first(), days.last())
-                    } else {
-                        coroutineScope {
-                            days.map { day -> async { SpanDayCache.loadFirst(bearer, scope, day) } }
-                                .awaitAll()
-                        }
-                    }
-                    publish(days)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    _ui.update { it.copy(loading = false, error = e.message ?: "Network error") }
-                }
-            }
-    }
-
-    fun loadMore(day: LocalDate = _ui.value.selectedDay) {
-        val bearer = token() ?: return
-        val s = _ui.value
-        if (s.mode == ViewMode.Month) return
-        val target = if (s.mode == ViewMode.Day) s.anchor else day
-        viewModelScope.launch {
+        _ui.update { it.copy(loading = true, error = "") }
+        loadJob = viewModelScope.launch {
             try {
-                SpanDayCache.loadMore(bearer, s.collectionId.orEmpty(), target)
-                publish(s.days)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                _ui.update { it.copy(error = e.message ?: "Network error") }
-            }
+                val from = Instant.ofEpochMilli(dayStartMs(days.first())).toString()
+                val to = Instant.ofEpochMilli(dayStartMs(days.last().plusDays(1))).toString()
+                if (state.mode == ViewMode.Month) {
+                    val rows = TimelineApi.counts(bearer, from, to, state.groupValue)
+                    val counts = rows.groupBy { LocalDate.parse(it.day) }.mapValues { (date, list) ->
+                        DaySummary(date.toString(), list.sumOf { it.count }.toInt(), list.map { `in`.voxagent.mobile.spans.CategoryCount(it.category, it.count.toInt()) })
+                    }
+                    _ui.update { it.copy(dayCounts = counts, loading = false) }
+                } else {
+                    val page = TimelineApi.query(bearer, from, to, state.groupValue, if (more) cursor else null)
+                    val spans = page.events.map { item ->
+                        val event = item.event
+                        Span(id = event.id, title = event.title, notes = event.summary.orEmpty(),
+                            category = _ui.value.groups.firstOrNull { it.id == event.group_id }?.value ?: "personal",
+                            source = item.evidence.firstOrNull()?.source_type ?: "timeline", status = `in`.voxagent.mobile.spans.SpanStatus.Done,
+                            startAt = event.occurred_at, endAt = event.ended_at, data = event.content, createdAt = event.created_at, version = event.revision.toInt())
+                    }
+                    cursor = page.next_cursor
+                    _ui.update { it.copy(spans = if (more) (it.spans + spans).distinctBy { s -> s.id } else spans, hasMore = cursor != null, loading = false) }
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) { _ui.update { it.copy(loading = false, error = e.message ?: "Network error") } }
         }
     }
-
-    private fun publish(days: List<LocalDate>) {
-        val scope = _ui.value.collectionId.orEmpty()
-        val entries = SpanDayCache.entries.value
-        val seen = HashSet<String>()
-        val spans =
-            days.flatMap { entries[DayKey(scope, it)]?.items.orEmpty() }.filter { seen.add(it.id) }
-        val target = _ui.value.let { if (it.mode == ViewMode.Day) it.anchor else it.selectedDay }
-        val entry = entries[DayKey(scope, target)]
-        _ui.update {
-            it.copy(
-                spans = spans,
-                dayCounts =
-                    SpanDayCache.counts.value
-                        .filterKeys { k -> k.scope == scope }
-                        .mapKeys { e -> e.key.day },
-                hasMore = entry?.hasMore == true,
-                frontierMs = entry?.items?.lastOrNull()?.startMs,
-                loading = false,
-                error = "",
-            )
-        }
-    }
-
-    private fun loadCollections() {
+    private fun loadGroups() {
         val bearer = token() ?: return
         viewModelScope.launch {
-            runCatching { SpansApi.getCollections(bearer) }
-                .onSuccess { list -> _ui.update { it.copy(collections = list) } }
+            try { val groups = TimelineApi.groups(bearer); _ui.update { it.copy(groups = groups) }; reload() }
+            catch (e: Exception) { if (e is CancellationException) throw e; _ui.update { it.copy(error = e.message ?: "Could not load groups") } }
         }
     }
 }

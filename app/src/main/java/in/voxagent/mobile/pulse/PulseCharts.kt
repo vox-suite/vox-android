@@ -53,7 +53,7 @@ internal fun PulseChartCard(
                         definition.bucket
                             ?.takeUnless { definition.measurement_id.startsWith("legacy:") }
                             ?.let {
-                                if (definition.period_days >= 3650) "All time"
+                                if (definition.period_days >= 366) "Last year"
                                 else
                                     "${definition.period_days} days${if (definition.offset_days > 0) " · ${definition.offset_days} days earlier" else ""}"
                             },
