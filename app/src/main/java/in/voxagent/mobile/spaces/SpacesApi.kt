@@ -99,9 +99,9 @@ object SpacesApi {
                     }
                     .getOrNull()
                     ?: when (e.statusCode) {
-                        409 -> "This space changed or is already committed. Refresh and try again."
-                        404 -> "This space is no longer available."
-                        else -> "Spaces request failed (${e.statusCode}). Please try again."
+                        409 -> "This Plan changed or is already committed. Refresh and try again."
+                        404 -> "This Plan is no longer available."
+                        else -> "Plans request failed (${e.statusCode}). Please try again."
                     }
             throw ApiException(e.statusCode, message)
         }

@@ -196,12 +196,12 @@ internal fun SpacesContent(ui: SpacesUiState, viewModel: SpacesViewModel, bottom
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         IconButton(onClick = { viewModel.open(null) }, enabled = !ui.busy) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to spaces", tint = Mist)
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to Plans", tint = Mist)
                         }
                         Column(Modifier.weight(1f)) {
                             Eyebrow("VOX / SPACE")
                             Text(
-                                graph?.space?.title ?: "Loading space…",
+                                graph?.space?.title ?: "Loading Plan…",
                                 fontSize = 16.sp,
                                 color = Mist,
                                 maxLines = 2,
@@ -209,11 +209,11 @@ internal fun SpacesContent(ui: SpacesUiState, viewModel: SpacesViewModel, bottom
                             )
                         }
                         IconButton(onClick = viewModel::reload, enabled = !ui.busy) {
-                            Icon(Icons.Outlined.Refresh, "Refresh space", tint = Mist)
+                            Icon(Icons.Outlined.Refresh, "Refresh Plan", tint = Mist)
                         }
                         if (graph != null)
                             IconButton(onClick = { chat = true }) {
-                                Icon(Icons.Outlined.ChatBubbleOutline, "Space chat", tint = Mist)
+                                Icon(Icons.Outlined.ChatBubbleOutline, "Plan chat", tint = Mist)
                             }
                     }
                     ErrorBanner(ui.error, viewModel::reload)
@@ -265,14 +265,14 @@ internal fun SpacesContent(ui: SpacesUiState, viewModel: SpacesViewModel, bottom
             dropTarget?.let { space ->
                 AlertDialog(
                     onDismissRequest = { if (!ui.busy) dropTarget = null },
-                    title = { Text("Drop this space?") },
-                    text = { Text("“${space.title}” will be removed from your Spaces library.") },
+                    title = { Text("Abandon this Plan?") },
+                    text = { Text("“${space.title}” will be removed from your Plans library.") },
                     confirmButton = {
                         TextButton(
                             onClick = { viewModel.drop(space.id) { dropTarget = null } },
                             enabled = !ui.busy,
                         ) {
-                            Text(if (ui.busy) "Dropping…" else "Drop space")
+                            Text(if (ui.busy) "Abandoning…" else "Abandon Plan")
                         }
                     },
                     dismissButton = {
@@ -290,7 +290,7 @@ internal fun SpacesContent(ui: SpacesUiState, viewModel: SpacesViewModel, bottom
                     title = { Text("Commit this plan?") },
                     text = {
                         Text(
-                            "Create a collection and $count planned timeline items from the completed plan and step cards. This space becomes read-only."
+                            "Create a collection and $count planned timeline items from the completed plan and step cards. This Plan becomes read-only."
                         )
                     },
                     confirmButton = {

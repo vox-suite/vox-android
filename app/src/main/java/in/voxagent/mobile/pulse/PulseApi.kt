@@ -113,7 +113,7 @@ object PulseApi {
                         val obj = VoxJson.parseToJsonElement(e.responseBody).jsonObject
                         (obj["error"] ?: obj["message"])?.jsonPrimitive?.content
                     }
-                    .getOrNull() ?: "Pulse request failed (${e.statusCode}). Please try again."
+                    .getOrNull() ?: "Insights request failed (${e.statusCode}). Please try again."
             throw ApiException(e.statusCode, msg)
         }
 }

@@ -169,8 +169,7 @@ internal fun SpaceChatSheet(ui: SpacesUiState, onClose: () -> Unit, viewModel: S
                     { draft = it },
                     placeholder = {
                         Text(
-                            if (space.editable) "Steer the plan…"
-                            else "Committed space (read-only)",
+                            if (space.editable) "Steer the plan…" else "Committed Plan (read-only)",
                             fontSize = 12.sp,
                         )
                     },

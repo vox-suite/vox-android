@@ -121,7 +121,7 @@ internal fun SpaceNodeSheet(
                     fontSize = 14.sp,
                     lineHeight = 22.sp,
                 )
-                Text("This space is read-only.", color = SmokeDark, fontSize = 12.sp)
+                Text("This Plan is read-only.", color = SmokeDark, fontSize = 12.sp)
             }
             TextButton(onClick = onClose, modifier = Modifier.align(Alignment.End)) {
                 Text("Close")

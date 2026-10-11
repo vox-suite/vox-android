@@ -81,11 +81,11 @@ internal fun PulseContent(ui: PulseUiState, viewModel: PulseViewModel, bottomIns
                     ) {
                         if (ui.mode != PulseMode.Library)
                             IconButton(onClick = viewModel::back, enabled = !ui.saving) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to Pulse")
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to Insights")
                             }
                         Text(
                             when (ui.mode) {
-                                PulseMode.Library -> "Pulse"
+                                PulseMode.Library -> "Insights"
                                 PulseMode.Editor -> "Customize chart"
                                 else -> "Add a chart"
                             },
@@ -99,14 +99,14 @@ internal fun PulseContent(ui: PulseUiState, viewModel: PulseViewModel, bottomIns
                                 onClick = { viewModel.reload(refresh = true) },
                                 enabled = !ui.busy,
                             ) {
-                                Icon(Icons.Outlined.Refresh, "Refresh Pulse")
+                                Icon(Icons.Outlined.Refresh, "Refresh Insights")
                             }
                         if (ui.mode == PulseMode.Library)
                             IconButton(
                                 onClick = { viewModel.go(PulseMode.Suggestions) },
                                 enabled = !ui.saving,
                             ) {
-                                Icon(Icons.Outlined.Add, "Add to Pulse", tint = PulseMint)
+                                Icon(Icons.Outlined.Add, "Add to Insights", tint = PulseMint)
                             }
                     }
                     HorizontalDivider(color = BorderSubtle)

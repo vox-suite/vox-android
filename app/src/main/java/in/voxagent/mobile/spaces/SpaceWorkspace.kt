@@ -69,7 +69,7 @@ internal fun ColumnScope.SpaceWorkspace(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         OutlinedButton(onClick = onChat, modifier = Modifier.weight(1f)) {
-            Text("Space chat", fontSize = 12.sp)
+            Text("Plan chat", fontSize = 12.sp)
         }
         Button(
             onClick = onCommit,
