@@ -30,6 +30,10 @@ internal fun PulseChartCard(
         if (definition.bucket == null) result?.points.orEmpty().take(definition.top_n ?: 8)
         else result?.points.orEmpty()
     val observed = points.filter { it.value?.isFinite() == true }
+    val multi = result?.takeIf { it.isMulti && definition.bucket != null }
+    val hasValues =
+        if (multi != null) multi.series.any { s -> s.points.any { it.value?.isFinite() == true } }
+        else observed.isNotEmpty()
     val headline =
         if (definition.bucket == null) observed.maxByOrNull { it.value!! }
         else observed.lastOrNull()
@@ -49,7 +53,11 @@ internal fun PulseChartCard(
             Text(title, color = Mist, fontWeight = FontWeight.Medium, fontSize = 15.sp)
             Text(
                 listOfNotNull(
-                        result?.source?.replace('_', ' ')?.takeIf { it.isNotBlank() },
+                        (if (multi != null) multi.series.map { it.source }.distinct().joinToString(" + ")
+                            else result?.source)
+                            ?.replace('_', ' ')
+                            ?.takeIf { it.isNotBlank() },
+                        multi?.let { "${it.series.size} measurements" },
                         definition.bucket
                             ?.takeUnless { definition.measurement_id.startsWith("legacy:") }
                             ?.let {
@@ -62,17 +70,19 @@ internal fun PulseChartCard(
                 color = SmokeDark,
                 fontSize = 11.sp,
             )
-            Text(
-                formatPulse(total.takeIf { result?.error == null }, result?.unit.orEmpty()),
-                color = Mist,
-                fontSize = 28.sp,
-                fontFamily = FontFamily.Monospace,
-            )
-            if (definition.chart_type != "stat")
-                Text(headline?.label.orEmpty(), color = SmokeDark, fontSize = 11.sp)
+            if (multi == null) {
+                Text(
+                    formatPulse(total.takeIf { result?.error == null }, result?.unit.orEmpty()),
+                    color = Mist,
+                    fontSize = 28.sp,
+                    fontFamily = FontFamily.Monospace,
+                )
+                if (definition.chart_type != "stat")
+                    Text(headline?.label.orEmpty(), color = SmokeDark, fontSize = 11.sp)
+            }
             when {
                 result?.error != null -> Text(result.error, color = CoralPulse, fontSize = 12.sp)
-                observed.isEmpty() ->
+                !hasValues ->
                     Box(
                         Modifier.fillMaxWidth()
                             .height(150.dp)
@@ -87,6 +97,52 @@ internal fun PulseChartCard(
                             modifier = Modifier.padding(16.dp),
                         )
                     }
+                multi != null -> {
+                    PulseMultiPlot(
+                        multi.series,
+                        definition.chart_type,
+                        Modifier.fillMaxWidth().height(200.dp),
+                    ) {
+                        selected = it
+                    }
+                    selected?.let { index ->
+                        Text(
+                            multi.series.joinToString("  ·  ") { s ->
+                                "${s.title}: ${formatPulse(s.points.getOrNull(index)?.value, s.unit)}"
+                            },
+                            color = PulseMint,
+                            fontSize = 11.sp,
+                            lineHeight = 16.sp,
+                        )
+                        Text(
+                            points.getOrNull(index)?.label.orEmpty(),
+                            color = SmokeDark,
+                            fontSize = 10.sp,
+                        )
+                    }
+                    multi.series.forEachIndexed { i, s ->
+                        Text(
+                            "●  ${s.title}  ${formatPulse(s.total, s.unit)}",
+                            color = seriesColors[i % seriesColors.size],
+                            fontSize = 11.sp,
+                        )
+                    }
+                    when (seriesMode(multi.series)) {
+                        SeriesMode.Dual ->
+                            Text(
+                                "Two units: the left and right axes use different scales.",
+                                color = SmokeDark,
+                                fontSize = 10.sp,
+                            )
+                        SeriesMode.Relative ->
+                            Text(
+                                "Different units: each series is scaled to its own peak (100%).",
+                                color = SmokeDark,
+                                fontSize = 10.sp,
+                            )
+                        SeriesMode.Single -> Unit
+                    }
+                }
                 definition.chart_type != "stat" -> {
                     PulsePlot(
                         points,
@@ -159,7 +215,7 @@ internal fun PulseChartCard(
                             Modifier.heightIn(max = 200.dp).verticalScroll(rememberScrollState()),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            result.points.forEach { point ->
+                            result.points.forEachIndexed { row, point ->
                                 Row(
                                     Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -171,7 +227,11 @@ internal fun PulseChartCard(
                                         modifier = Modifier.weight(1f),
                                     )
                                     Text(
-                                        if (point.value == null) "No recorded coverage"
+                                        if (multi != null)
+                                            multi.series.joinToString(" · ") { s ->
+                                                formatPulse(s.points.getOrNull(row)?.value, s.unit)
+                                            }
+                                        else if (point.value == null) "No recorded coverage"
                                         else formatPulse(point.value, result.unit),
                                         color = SmokeDark,
                                         fontSize = 11.sp,

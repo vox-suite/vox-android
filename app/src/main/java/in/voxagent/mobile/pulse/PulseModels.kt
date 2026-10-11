@@ -14,6 +14,7 @@ data class PulseDefinition(
     val timezone: String = ZoneId.systemDefault().id,
     val offset_days: Int = 0,
     val top_n: Int? = null,
+    val compare_with: List<String> = emptyList(),
 ) {
     fun withRange(days: Int) =
         copy(
@@ -34,6 +35,18 @@ data class PulseDefinition(
 @Serializable data class PulsePoint(val label: String, val value: Double? = null)
 
 @Serializable
+data class PulseSeries(
+    val measurement_id: String,
+    val title: String = "",
+    val source: String = "",
+    val unit: String = "",
+    val quality: String = "",
+    val total: Double? = null,
+    val record_count: Long = 0,
+    val points: List<PulsePoint> = emptyList(),
+)
+
+@Serializable
 data class PulseResult(
     val points: List<PulsePoint> = emptyList(),
     val total: Double? = null,
@@ -46,9 +59,17 @@ data class PulseResult(
     val undated_count: Long = 0,
     val data_as_of: String? = null,
     val computed_at: String = "",
+    val series: List<PulseSeries> = emptyList(),
 ) {
+    val isMulti: Boolean
+        get() = series.size > 1
+
     val canSave: Boolean
-        get() = error == null && points.any { it.value?.isFinite() == true }
+        get() =
+            error == null &&
+                (if (isMulti) series.flatMap { it.points } else points).any {
+                    it.value?.isFinite() == true
+                }
 }
 
 @Serializable

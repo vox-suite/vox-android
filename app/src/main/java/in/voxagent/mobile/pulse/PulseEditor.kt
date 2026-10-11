@@ -13,6 +13,8 @@ import `in`.voxagent.mobile.ui.theme.*
 internal fun ColumnScope.PulseEditor(ui: PulseUiState, viewModel: PulseViewModel) {
     val definition = ui.definition ?: return
     val measurement = ui.measurement ?: return
+    LaunchedEffect(Unit) { viewModel.ensureMeasurements() }
+    val compare = definition.compare_with
     LazyColumn(
         Modifier.weight(1f),
         contentPadding = PaddingValues(16.dp),
@@ -32,11 +34,18 @@ internal fun ColumnScope.PulseEditor(ui: PulseUiState, viewModel: PulseViewModel
             PulseChoice(
                 "Group by",
                 definition.bucket ?: definition.dimension.orEmpty(),
-                measurement.buckets + measurement.dimensions,
+                measurement.buckets + (if (compare.isEmpty()) measurement.dimensions else emptyList()),
                 !ui.saving,
             ) { value ->
+                val keep =
+                    if (value in measurement.buckets)
+                        compare.filter { id ->
+                            ui.measurements.firstOrNull { it.id == id }?.buckets?.contains(value) == true
+                        }
+                    else emptyList()
                 viewModel.change(
                     definition.copy(
+                        compare_with = keep,
                         bucket = value.takeIf { it in measurement.buckets },
                         dimension = value.takeIf { it in measurement.dimensions },
                         chart_type =
@@ -62,12 +71,18 @@ internal fun ColumnScope.PulseEditor(ui: PulseUiState, viewModel: PulseViewModel
             PulseChoice(
                 "Chart",
                 definition.chart_type,
-                if (definition.bucket != null) listOf("bar", "line", "area", "stat")
+                if (definition.bucket != null && compare.isNotEmpty()) listOf("line", "area", "bar")
+                else if (definition.bucket != null) listOf("bar", "line", "area", "stat")
                 else if (measurement.profile.currency.isNotBlank()) listOf("bar")
                 else listOf("bar", "pie"),
                 !ui.saving,
             ) {
                 viewModel.change(definition.copy(chart_type = it))
+            }
+        }
+        item {
+            PulseCompare(definition, measurement, ui.measurements, !ui.saving) {
+                viewModel.change(it)
             }
         }
         if (ui.busy) item { LinearProgressIndicator(Modifier.fillMaxWidth(), color = PulseMint) }

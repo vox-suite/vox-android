@@ -238,6 +238,15 @@ class PulseViewModel(private val token: () -> String?) : ViewModel() {
             }
         }
 
+    fun ensureMeasurements() {
+        if (state.value.measurements.isNotEmpty()) return
+        viewModelScope.launch {
+            val bearer = token() ?: return@launch
+            runCatching { PulseApi.measurements(bearer) }
+                .onSuccess { list -> state.update { it.copy(measurements = list) } }
+        }
+    }
+
     private fun loadMeasurements() = work { bearer ->
         val measurements = PulseApi.measurements(bearer)
         state.update { it.copy(measurements = measurements) }
