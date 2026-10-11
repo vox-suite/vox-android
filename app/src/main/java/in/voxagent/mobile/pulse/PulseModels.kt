@@ -125,4 +125,17 @@ data class SavedPulseChart(
 )
 
 @Serializable
- data class PulseCanvas(val charts: List<SavedPulseChart> = emptyList(), val next_cursor: String? = null)
+data class PulseCanvas(
+    val charts: List<SavedPulseChart> = emptyList(),
+    val next_cursor: String? = null,
+)
+
+@Serializable data class PulseCount(val count: Int, val revision: String)
+
+@Serializable
+data class PulseSnapshot(
+    val revision: String?,
+    val count: Int?,
+    val timezone: String,
+    val canvas: PulseCanvas,
+)

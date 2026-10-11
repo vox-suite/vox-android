@@ -108,6 +108,7 @@ class AuthManager(private val context: Context) {
                         json.decodeFromString(AuthExchangeResponse.serializer(), responseJson)
                     sessionStore.save(
                         token = response.token,
+                        userId = response.user_id,
                         expiresAt = Instant.parse(response.expires_at),
                         email = authResult.email,
                         displayName = authResult.displayName,
@@ -154,6 +155,7 @@ class AuthManager(private val context: Context) {
 
     fun signOut() {
         sessionStore.clear()
+        `in`.voxagent.mobile.timeline.TimelinePersistence.clear(context.noBackupFilesDir)
     }
 
     private suspend fun requestGoogleAuth(): GoogleAuthResult? {

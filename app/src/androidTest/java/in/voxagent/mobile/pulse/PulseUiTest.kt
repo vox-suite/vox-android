@@ -42,20 +42,6 @@ class PulseUiTest {
             measurement,
             result,
         )
-    private val goal =
-        GoalView(
-            "saving",
-            "A new bike",
-            "saving",
-            "at_least",
-            80000.0,
-            "INR",
-            current = 20000.0,
-            percent = 25.0,
-            status = "on_track",
-            remaining = 60000.0,
-            deadline = "2026-12-31",
-        )
 
     private fun show(ui: PulseUiState) {
         compose.setContent { VoxTheme(darkTheme = true) { PulseContent(ui, vm) } }
@@ -81,7 +67,7 @@ class PulseUiTest {
     @Test
     fun emptyPulseHasAddAction() {
         show(PulseUiState(loading = false))
-        compose.onNodeWithText("No charts yet").assertIsDisplayed()
+        compose.onNodeWithText("Your life, as a living chart.").assertIsDisplayed()
         compose.onNodeWithContentDescription("Add to Pulse").assertIsDisplayed()
         screenshot("empty")
     }
@@ -101,7 +87,7 @@ class PulseUiTest {
         compose.onNodeWithText("Daily listening").assertIsDisplayed()
         compose.onNodeWithText("View data").performScrollTo().performClick()
         compose.onNodeWithText("No recorded coverage").performScrollTo().assertIsDisplayed()
-        compose.onAllNodesWithText("0 hrs").assertCountEquals(2)
+        compose.onAllNodesWithText("0 hrs", useUnmergedTree = true).assertCountEquals(2)
         screenshot("chart")
     }
 
@@ -114,8 +100,6 @@ class PulseUiTest {
                 discovery = DiscoveryResponse(listOf(suggestion), 12, 1),
             )
         )
-        compose.onNodeWithText("Ask Pulse").assertIsDisplayed()
-        compose.onNodeWithText("Goal").assertIsDisplayed()
         compose.onNodeWithText("Add to Pulse").performScrollTo().assertIsEnabled()
         screenshot("suggestions")
     }
@@ -132,68 +116,9 @@ class PulseUiTest {
                 preview = result.copy(error = "Reconnect Spotify"),
             )
         )
-        compose.onNodeWithText("Add to Pulse").performScrollTo().assertIsNotEnabled()
+        compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasText("Add to Pulse"))
+        compose.onNodeWithText("Add to Pulse").assertIsNotEnabled()
         screenshot("editor-error")
-    }
-
-    @Test
-    fun askPulseHasChatAndChartPreview() {
-        show(
-            PulseUiState(
-                mode = PulseMode.Ask,
-                loading = false,
-                title = "Daily listening",
-                definition = definition,
-                measurement = measurement,
-                preview = result,
-                messages =
-                    listOf(
-                        ComposeMessage("user", "Daily Spotify hours"),
-                        ComposeMessage("assistant", "Here is your reported listening duration."),
-                    ),
-            )
-        )
-        compose.onNodeWithText("Daily Spotify hours").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Send to Pulse").assertIsNotEnabled()
-        compose.onNode(hasSetTextAction()).performTextInput("Group by week")
-        compose.onNodeWithContentDescription("Send to Pulse").assertIsEnabled()
-        screenshot("ask")
-    }
-
-    @Test
-    fun savingsRejectInvalidEntriesAndAllowWithdrawal() {
-        show(PulseUiState(loading = false, goals = listOf(goal)))
-        compose.onNodeWithText("Add").assertIsNotEnabled()
-        val input = compose.onNode(hasSetTextAction())
-        input.performTextInput("NaN")
-        compose.onNodeWithText("Add").assertIsNotEnabled()
-        input.performTextReplacement("-500")
-        compose.onNodeWithText("Add").assertIsEnabled()
-        screenshot("saving")
-        compose.onNodeWithText("Delete").performClick()
-        compose.onNodeWithText("Delete goal?").assertIsDisplayed()
-        compose.onNodeWithText("Cancel").performClick()
-    }
-
-    @Test
-    fun goalComposerShowsPreviewAndExplicitCreate() {
-        show(
-            PulseUiState(
-                mode = PulseMode.Goal,
-                loading = false,
-                goalPreview = goal,
-                goalDraft =
-                    GoalDraft(
-                        title = goal.title,
-                        kind = goal.kind,
-                        direction = goal.direction,
-                        target = goal.target,
-                        unit = goal.unit,
-                    ),
-            )
-        )
-        compose.onNodeWithText("Create goal").performScrollTo().assertIsEnabled()
-        screenshot("goal")
     }
 
     @Test
@@ -222,7 +147,6 @@ class PulseUiTest {
         assertEquals(Destination.Pulse, destination)
         compose.onNodeWithContentDescription("Connected Apps").assertIsDisplayed()
         compose.onNodeWithContentDescription("Talk to Vox").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Google Account Avatar").assertIsDisplayed()
         screenshot("navigation")
     }
 

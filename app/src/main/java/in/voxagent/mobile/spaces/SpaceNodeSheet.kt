@@ -73,6 +73,14 @@ internal fun SpaceNodeSheet(
                     ) {
                         Text(if (busy) "Saving…" else "Save changes")
                     }
+                if (node.state in setOf("failed", "stale"))
+                    OutlinedButton(
+                        onClick = { viewModel.retry(node) },
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Retry research")
+                    }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedButton(
                         onClick = {
@@ -94,7 +102,8 @@ internal fun SpaceNodeSheet(
                     OutlinedButton(
                         onClick = {
                             viewModel.send(
-                                "Dig deeper on \"${node.title}\". Research more details, pros, cons, and budget implications."
+                                "Dig deeper on \"${node.title}\". Research more details, pros, cons, and budget implications.",
+                                nodeId = node.id,
                             ) {
                                 onClose()
                             }

@@ -25,8 +25,10 @@ class SessionStore(context: Context) {
         email: String? = null,
         displayName: String? = null,
         avatarUrl: String? = null,
+        userId: String? = null,
     ) {
         prefs.edit {
+            if (userId != null) putString(KEY_USER_ID, userId)
             putString(KEY_TOKEN, token)
             putLong(KEY_EXPIRES_AT, expiresAt.toEpochMilli())
             if (email != null) putString(KEY_EMAIL, email)
@@ -54,6 +56,8 @@ class SessionStore(context: Context) {
         return token
     }
 
+    fun getUserId(): String? = prefs.getString(KEY_USER_ID, null)
+
     fun getUserEmail(): String? = prefs.getString(KEY_EMAIL, null)
 
     fun getUserDisplayName(): String? = prefs.getString(KEY_DISPLAY_NAME, null)
@@ -65,6 +69,7 @@ class SessionStore(context: Context) {
     }
 
     companion object {
+        private const val KEY_USER_ID = "user_id"
         private const val KEY_TOKEN = "token"
         private const val KEY_EXPIRES_AT = "expires_at"
         private const val KEY_EMAIL = "user_email"

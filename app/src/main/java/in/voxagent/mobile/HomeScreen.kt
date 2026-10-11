@@ -11,8 +11,8 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.repeatOnLifecycle
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import `in`.voxagent.mobile.auth.UserProfile
@@ -30,8 +31,6 @@ import `in`.voxagent.mobile.connections.ConnectionsScreen
 import `in`.voxagent.mobile.map.MissionMapBackground
 import `in`.voxagent.mobile.pulse.PulseScreen
 import `in`.voxagent.mobile.spaces.SpacesScreen
-import `in`.voxagent.mobile.spans.SpanCollection
-import `in`.voxagent.mobile.timeline.SheetTarget
 import `in`.voxagent.mobile.timeline.TimelineScreen
 import `in`.voxagent.mobile.ui.Destination
 import `in`.voxagent.mobile.ui.TalkState
@@ -54,15 +53,39 @@ internal fun HomeScreen(
     permissionsAllSet: Boolean = false,
 ) {
     val latestToken by rememberUpdatedState(token)
-    var destination by remember { mutableStateOf(Destination.Home) }
-    var sheet by remember { mutableStateOf<SheetTarget?>(null) }
-    var timelineReload by remember { mutableIntStateOf(0) }
-    var timelineCollections by remember { mutableStateOf<List<SpanCollection>>(emptyList()) }
+    val voiceContext = LocalContext.current
+    val control = remember(token) { `in`.voxagent.mobile.control.AppControlState() }
+    val appContext by control.context.collectAsState()
+    val destination =
+        when (appContext.page) {
+            "timeline" -> Destination.Timeline
+            "spaces" -> Destination.Spaces
+            "pulse" -> Destination.Pulse
+            "connections" -> Destination.Connections
+            "updates" -> Destination.Updates
+            else -> Destination.Home
+        }
+    fun navigate(destination: Destination) =
+        control.navigate(
+            when (destination) {
+                Destination.Timeline -> "timeline"
+                Destination.Spaces -> "spaces"
+                Destination.Pulse -> "pulse"
+                Destination.Connections -> "connections"
+                Destination.Updates -> "updates"
+                else -> "agent"
+            }
+        )
+    val deviceLink =
+        remember(control) {
+            `in`.voxagent.mobile.control.AppDeviceLink(voiceContext, control) { latestToken }
+        }
+    var sheet by remember { mutableStateOf<`in`.voxagent.mobile.spans.Span?>(null) }
     var showProfileSheet by remember { mutableStateOf(false) }
     val hazeState = remember { HazeState() }
 
-    val voiceContext = LocalContext.current
-    val voiceSession = remember { VoiceSession(voiceContext) }
+    val voiceSession =
+        remember(deviceLink) { VoiceSession(voiceContext) { deviceLink.awaitDevice() } }
     var voiceStatus by remember { mutableStateOf(VoiceStatus.IDLE) }
     var voiceMuted by remember { mutableStateOf(false) }
     val voiceSnackbar = remember { androidx.compose.material3.SnackbarHostState() }
@@ -92,7 +115,22 @@ internal fun HomeScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-    DisposableEffect(voiceSession) { onDispose { voiceSession.dispose() } }
+    DisposableEffect(voiceSession, deviceLink) {
+        onDispose {
+            voiceSession.dispose()
+            deviceLink.dispose()
+        }
+    }
+    LaunchedEffect(lifecycleOwner, deviceLink) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
+            deviceLink.start()
+            try {
+                kotlinx.coroutines.awaitCancellation()
+            } finally {
+                deviceLink.stop()
+            }
+        }
+    }
     LaunchedEffect(voiceSession) {
         voiceSession.events.collect { event ->
             if (event is `in`.voxagent.mobile.voice.VoiceEvent.Error)
@@ -111,34 +149,37 @@ internal fun HomeScreen(
         voxSpeaking = false
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Box(modifier = Modifier.fillMaxSize().hazeSource(state = hazeState)) {
-            MissionMapBackground(
-                modifier = Modifier.fillMaxSize(),
-                locationPermissionGranted = locationPermissionGranted,
-                token = { latestToken },
-                callActive = voiceStatus == VoiceStatus.ACTIVE,
-                voxSpeaking = voxSpeaking,
-            )
+    androidx.compose.runtime.CompositionLocalProvider(
+        `in`.voxagent.mobile.control.LocalAppControl provides control
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Box(modifier = Modifier.fillMaxSize().hazeSource(state = hazeState)) {
+                MissionMapBackground(
+                    modifier = Modifier.fillMaxSize(),
+                    locationPermissionGranted = locationPermissionGranted,
+                    token = { latestToken },
+                    callActive = voiceStatus == VoiceStatus.ACTIVE,
+                    voxSpeaking = voxSpeaking,
+                )
 
-            Box(
-                modifier =
-                    Modifier.fillMaxSize()
-                        .voxGrain(opacity = 0.05f, blendMode = BlendMode.SrcOver, tileSize = 140.dp)
-            )
-        }
+                Box(
+                    modifier =
+                        Modifier.fillMaxSize()
+                            .voxGrain(
+                                opacity = 0.05f,
+                                blendMode = BlendMode.SrcOver,
+                                tileSize = 140.dp,
+                            )
+                )
+            }
 
-        if (destination == Destination.Timeline && token != null) {
-            TimelineScreen(
-                token = { latestToken },
-                bottomInset = 88.dp,
-                onOpenSpan = { sheet = SheetTarget.Edit(it) },
-                reloadSignal = timelineReload,
-                onCollections = { timelineCollections = it },
-            )
-            sheet?.let { target ->
-                val event = (target as? SheetTarget.Edit)?.span
-                if (event != null)
+            if (destination == Destination.Timeline && token != null) {
+                TimelineScreen(
+                    token = { latestToken },
+                    bottomInset = 88.dp,
+                    onOpenSpan = { sheet = it },
+                )
+                sheet?.let { event ->
                     androidx.compose.material3.AlertDialog(
                         onDismissRequest = { sheet = null },
                         title = { androidx.compose.material3.Text(event.title) },
@@ -153,89 +194,98 @@ internal fun HomeScreen(
                             }
                         },
                     )
-            }
-        }
-
-        if (destination == Destination.Updates && token != null) {
-            `in`.voxagent.mobile.updates.UpdatesScreen(token = { latestToken }, bottomInset = 88.dp)
-        }
-        if (destination == Destination.Pulse && token != null) {
-            PulseScreen(token = { latestToken }, bottomInset = 88.dp)
-        }
-
-        if (destination == Destination.Spaces && token != null) {
-            SpacesScreen(token = { latestToken }, bottomInset = 88.dp)
-        }
-
-        if (destination == Destination.Connections && token != null) {
-            ConnectionsScreen(
-                token = { latestToken },
-                bottomInset = 88.dp,
-                onBack = { destination = Destination.Home },
-            )
-        }
-
-        if (voiceStatus == VoiceStatus.ACTIVE || voiceStatus == VoiceStatus.CONNECTING) {
-            `in`.voxagent.mobile.voice.VoiceControls(
-                status = voiceStatus,
-                muted = voiceMuted,
-                speaking = voxSpeaking,
-                onMute = {
-                    voiceMuted = !voiceMuted
-                    voiceSession.setMuted(voiceMuted)
-                },
-                onStop = { voiceSession.stop() },
-                onSend = { voiceSession.sendText(it) },
-                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(16.dp),
-            )
-        }
-        androidx.compose.material3.SnackbarHost(
-            hostState = voiceSnackbar,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 100.dp),
-        )
-
-        VoxBottomNav(
-            destination = destination,
-            onDestination = { destination = it },
-            talkState =
-                when (voiceStatus) {
-                    VoiceStatus.CONNECTING -> TalkState.Connecting
-                    VoiceStatus.ACTIVE -> TalkState.Active
-                    VoiceStatus.ERROR -> TalkState.Error
-                    VoiceStatus.IDLE -> TalkState.Idle
-                },
-            onTalkClick = {
-                when (voiceStatus) {
-                    VoiceStatus.IDLE,
-                    VoiceStatus.ERROR -> {
-                        if (recordAudioGranted) {
-                            voiceSession.start()
-                        } else {
-                            recordAudioLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                        }
-                    }
-                    VoiceStatus.ACTIVE,
-                    VoiceStatus.CONNECTING -> voiceSession.stop()
                 }
-            },
-            avatarUrl = userProfile.avatarUrl,
-            displayName = userProfile.displayName,
-            onAvatarClick = { showProfileSheet = true },
-            hazeState = hazeState,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
+            }
 
-        VoxProfileSheet(
-            displayName = userProfile.displayName,
-            email = userProfile.email,
-            avatarUrl = userProfile.avatarUrl,
-            visible = showProfileSheet,
-            hazeState = hazeState,
-            onDismiss = { showProfileSheet = false },
-            onSignOut = onSignOut,
-            onSyncProfile = onSyncProfile,
-            onReviewPermissions = onReviewPermissions,
-            permissionsAllSet = permissionsAllSet,
-        )
+            if (destination == Destination.Updates && token != null) {
+                `in`.voxagent.mobile.updates.UpdatesScreen(
+                    token = { latestToken },
+                    bottomInset = 88.dp,
+                )
+            }
+            if (destination == Destination.Pulse && token != null) {
+                PulseScreen(token = { latestToken }, bottomInset = 88.dp)
+            }
+
+            if (destination == Destination.Spaces && token != null) {
+                SpacesScreen(token = { latestToken }, bottomInset = 88.dp)
+            }
+
+            if (destination == Destination.Connections && token != null) {
+                ConnectionsScreen(
+                    token = { latestToken },
+                    bottomInset = 88.dp,
+                    onBack = { navigate(Destination.Home) },
+                )
+            }
+
+            if (voiceStatus == VoiceStatus.ACTIVE || voiceStatus == VoiceStatus.CONNECTING) {
+                `in`.voxagent.mobile.voice.VoiceControls(
+                    status = voiceStatus,
+                    muted = voiceMuted,
+                    speaking = voxSpeaking,
+                    onMute = {
+                        voiceMuted = !voiceMuted
+                        voiceSession.setMuted(voiceMuted)
+                    },
+                    onStop = { voiceSession.stop() },
+                    onSend = { voiceSession.sendText(it) },
+                    modifier =
+                        Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(16.dp),
+                )
+            }
+            androidx.compose.material3.SnackbarHost(
+                hostState = voiceSnackbar,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 100.dp),
+            )
+
+            VoxBottomNav(
+                destination = destination,
+                onDestination = { navigate(it) },
+                talkState =
+                    when (voiceStatus) {
+                        VoiceStatus.CONNECTING -> TalkState.Connecting
+                        VoiceStatus.ACTIVE -> TalkState.Active
+                        VoiceStatus.ERROR -> TalkState.Error
+                        VoiceStatus.IDLE -> TalkState.Idle
+                    },
+                onTalkClick = {
+                    when (voiceStatus) {
+                        VoiceStatus.IDLE,
+                        VoiceStatus.ERROR -> {
+                            if (recordAudioGranted) {
+                                voiceSession.start()
+                            } else {
+                                recordAudioLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        }
+                        VoiceStatus.ACTIVE,
+                        VoiceStatus.CONNECTING -> voiceSession.stop()
+                    }
+                },
+                avatarUrl = userProfile.avatarUrl,
+                displayName = userProfile.displayName,
+                onAvatarClick = { showProfileSheet = true },
+                hazeState = hazeState,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+
+            VoxProfileSheet(
+                displayName = userProfile.displayName,
+                email = userProfile.email,
+                avatarUrl = userProfile.avatarUrl,
+                visible = showProfileSheet,
+                hazeState = hazeState,
+                onDismiss = { showProfileSheet = false },
+                onSignOut = {
+                    voiceSession.stop()
+                    deviceLink.stop()
+                    onSignOut()
+                },
+                onSyncProfile = onSyncProfile,
+                onReviewPermissions = onReviewPermissions,
+                permissionsAllSet = permissionsAllSet,
+            )
+        }
     }
 }

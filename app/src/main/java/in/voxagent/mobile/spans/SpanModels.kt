@@ -95,18 +95,6 @@ data class Span(
         get() = ((data as? JsonObject)?.get("currency") as? JsonPrimitive)?.contentOrNull ?: "INR"
 }
 
-@Serializable
-data class SpanCollection(
-    val id: String,
-    val name: String,
-    val kind: String = "custom",
-    val status: String = "",
-    @SerialName("starts_at") val startsAt: String? = null,
-    @SerialName("ends_at") val endsAt: String? = null,
-    @SerialName("span_count") val spanCount: Int = 0,
-    val version: Int = 0,
-)
-
 @Serializable data class CategoryCount(val category: String = "", val count: Int = 0)
 
 @Serializable
@@ -114,17 +102,4 @@ data class DaySummary(
     val day: String,
     val count: Int = 0,
     val categories: List<CategoryCount> = emptyList(),
-)
-
-@Serializable
-data class DayCounts(
-    val revision: Long = 0,
-    val unchanged: Boolean = false,
-    val days: List<DaySummary> = emptyList(),
-)
-
-@Serializable
-data class DayPage(
-    val items: List<Span> = emptyList(),
-    @SerialName("next_cursor") val nextCursor: String? = null,
 )

@@ -129,22 +129,20 @@ class SpacesUiTest {
         compose.onNodeWithContentDescription("Spaces").assertIsDisplayed().performClick()
         settle()
         org.junit.Assert.assertEquals(Destination.Spaces, destination)
-        compose.onNodeWithContentDescription("Google Account Avatar").assertIsDisplayed()
         compose.onNodeWithContentDescription("Talk to Vox").assertIsDisplayed()
         screenshot("navigation")
     }
 
     @Test
-    fun emptyLibraryOpensCreateSheetAndRequiresBothFields() {
+    fun emptyLibraryOpensCreateSheetAndRequiresIntent() {
         show(SpacesUiState(loading = false))
-        compose.onNodeWithText("Map out a decision.").assertIsDisplayed()
+        compose.onNodeWithText("Think it through, layer by layer.").assertIsDisplayed()
         screenshot("empty")
-        compose.onNodeWithText("Create first space").performClick()
+        compose.onNodeWithText("Create a space").performClick()
         settle()
         compose.onNodeWithText("Create space").assertIsNotEnabled()
-        compose.onNode(hasSetTextAction() and hasText("Title")).performTextInput("Weekend getaway")
         compose
-            .onNode(hasSetTextAction() and hasText("Vision & intent"))
+            .onNode(hasSetTextAction() and hasText("What are you thinking about?"))
             .performTextInput("Compare quiet places nearby and plan a two-day trip.")
         settle()
         compose.onNodeWithText("Create space").assertIsEnabled()
@@ -152,9 +150,9 @@ class SpacesUiTest {
     }
 
     @Test
-    fun radialMapCardsAndNodeEditingWorkOnPhone() {
+    fun dependencyCanvasCardsAndNodeEditingWorkOnPhone() {
         show(SpacesUiState(selectedId = space.id, graph = graph, loading = false))
-        compose.onNodeWithText("Fit map").assertIsDisplayed()
+        compose.onNodeWithText("Fit canvas").assertIsDisplayed()
         screenshot("map")
         compose.onNodeWithText("+").performClick()
         settle()

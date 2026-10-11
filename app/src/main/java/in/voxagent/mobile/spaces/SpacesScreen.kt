@@ -27,6 +27,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import `in`.voxagent.mobile.ui.VoxDarkScreen
+import `in`.voxagent.mobile.ui.kit.ProductIntroduction
 import `in`.voxagent.mobile.ui.theme.*
 
 internal val SpacesColors =
@@ -47,10 +48,56 @@ internal val SpacesColors =
 
 @Composable
 fun SpacesScreen(token: () -> String?, bottomInset: Dp = 88.dp) {
+    val context = androidx.compose.ui.platform.LocalContext.current.applicationContext
+    val cache = remember(context) { `in`.voxagent.mobile.cache.DeviceCache(context, "spaces") }
     val latestToken by rememberUpdatedState(token)
     val viewModel: SpacesViewModel =
-        viewModel(factory = viewModelFactory { initializer { SpacesViewModel { latestToken() } } })
+        viewModel(
+            key = "spaces:${cache.identity}:${cache.epoch}",
+            factory = viewModelFactory { initializer { SpacesViewModel({ latestToken() }, cache) } },
+        )
     val ui by viewModel.ui.collectAsState()
+    val control = `in`.voxagent.mobile.control.LocalAppControl.current
+    val appContext = control?.context?.collectAsState()?.value
+    val actions = control?.actions?.collectAsState()?.value ?: 0
+    LaunchedEffect(appContext?.spaceId) {
+        if (ui.selectedId != appContext?.spaceId) viewModel.open(appContext?.spaceId)
+    }
+    LaunchedEffect(actions) { if (actions > 0) viewModel.reload() }
+    LaunchedEffect(ui.selectedId, ui.graph) {
+        val current = viewModel.ui.value
+        control?.patch {
+            it.copy(
+                spaceId = current.selectedId,
+                resourceDetails =
+                    current.graph?.let { graph ->
+                        kotlinx.serialization.json.buildJsonObject {
+                            put(
+                                "title",
+                                kotlinx.serialization.json.JsonPrimitive(graph.space.title),
+                            )
+                            put(
+                                "state",
+                                kotlinx.serialization.json.JsonPrimitive(graph.space.state),
+                            )
+                            put(
+                                "runState",
+                                kotlinx.serialization.json.JsonPrimitive(graph.space.run_state),
+                            )
+                            put(
+                                "nodeIds",
+                                kotlinx.serialization.json.JsonArray(
+                                    graph.nodes.map { node ->
+                                        kotlinx.serialization.json.JsonPrimitive(node.id)
+                                    }
+                                ),
+                            )
+                        }
+                    },
+            )
+        }
+    }
+
     val owner = LocalLifecycleOwner.current
     LaunchedEffect(owner, viewModel) {
         owner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { viewModel.observe() }
@@ -65,9 +112,16 @@ internal fun SpacesContent(ui: SpacesUiState, viewModel: SpacesViewModel, bottom
     var selectedNodeId by rememberSaveable(ui.selectedId) { mutableStateOf<String?>(null) }
     var dropTarget by remember { mutableStateOf<Space?>(null) }
     var confirmCommit by remember { mutableStateOf(false) }
+    val control = `in`.voxagent.mobile.control.LocalAppControl.current
+    val appContext = control?.context?.collectAsState()?.value
+    LaunchedEffect(appContext?.selectedItemId) { selectedNodeId = appContext?.selectedItemId }
+
     val graph = ui.graph
     LaunchedEffect(graph?.nodes?.map { it.id }) {
-        if (graph != null && graph.nodes.none { it.id == selectedNodeId }) selectedNodeId = null
+        if (graph != null && graph.nodes.none { it.id == selectedNodeId }) {
+            selectedNodeId = null
+            control?.patch { it.copy(selectedItemId = null) }
+        }
     }
     BackHandler(ui.selectedId != null && !creating && !chat && selectedNodeId == null) {
         viewModel.open(null)
@@ -105,7 +159,7 @@ internal fun SpacesContent(ui: SpacesUiState, viewModel: SpacesViewModel, bottom
                         }
                     }
                     Text(
-                        "Explore an idea. Compare options. Build a plan.",
+                        if (ui.spaces.isEmpty()) "Nothing here yet" else "${ui.spaces.size} spaces",
                         fontSize = 12.sp,
                         color = SmokeDark,
                         modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 20.dp),
@@ -118,31 +172,7 @@ internal fun SpacesContent(ui: SpacesUiState, viewModel: SpacesViewModel, bottom
                     when {
                         ui.loading && ui.spaces.isEmpty() -> SpacesLoading()
                         ui.spaces.isEmpty() && ui.error == null ->
-                            Column(
-                                Modifier.weight(1f).padding(24.dp),
-                                verticalArrangement = Arrangement.Center,
-                            ) {
-                                Eyebrow("00 SPACES")
-                                Text(
-                                    "Map out a decision.",
-                                    color = Mist,
-                                    fontSize = 30.sp,
-                                    modifier = Modifier.padding(top = 12.dp),
-                                )
-                                Text(
-                                    "Start a space to explore trips, fitness routines or big decisions. Vox reads your past data and lays the options out around your goal.",
-                                    color = SmokeDark,
-                                    fontSize = 14.sp,
-                                    lineHeight = 22.sp,
-                                    modifier = Modifier.padding(top = 12.dp),
-                                )
-                                Button(
-                                    onClick = { creating = true },
-                                    modifier = Modifier.padding(top = 24.dp),
-                                ) {
-                                    Text("Create first space")
-                                }
-                            }
+                            ProductIntroduction(spaces = true) { creating = true }
                         else ->
                             LazyColumn(
                                 Modifier.weight(1f),
@@ -193,9 +223,13 @@ internal fun SpacesContent(ui: SpacesUiState, viewModel: SpacesViewModel, bottom
                             graph,
                             ui.busy,
                             selectedNodeId,
-                            { selectedNodeId = it.id },
+                            {
+                                selectedNodeId = it.id
+                                control?.patch { context -> context.copy(selectedItemId = it.id) }
+                            },
                             { chat = true },
                             { confirmCommit = true },
+                            viewModel::stop,
                         )
                     }
                 }
@@ -217,7 +251,10 @@ internal fun SpacesContent(ui: SpacesUiState, viewModel: SpacesViewModel, bottom
                         graph.space.editable,
                         ui.busy,
                         ui.error,
-                        { selectedNodeId = null },
+                        {
+                            selectedNodeId = null
+                            control?.patch { it.copy(selectedItemId = null) }
+                        },
                         viewModel,
                     )
                 }

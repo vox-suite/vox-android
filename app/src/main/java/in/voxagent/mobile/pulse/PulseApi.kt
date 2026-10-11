@@ -18,25 +18,30 @@ object PulseApi {
     private fun query(vararg pairs: Pair<String, String>): String =
         pairs.joinToString("&", prefix = "?") { (k, v) -> "$k=${URLEncoder.encode(v, "UTF-8")}" }
 
-    suspend fun canvas(
-        token: String,
-        refresh: Boolean = false,
-        cursor: String? = null,
-    ): PulseCanvas =
+    suspend fun count(token: String): PulseCount =
+        VoxJson.decodeFromString(
+            request("GET", "/v1/me/pulse/charts/count", token, timeout = 8_000)
+        )
+
+    suspend fun list(token: String, offset: Int, limit: Int = 13): List<SavedPulseChart> =
         VoxJson.decodeFromString(
             request(
                 "GET",
-                "/v1/me/pulse/canvas" +
-                    query(
-                        *buildList {
-                                add("timezone" to timezone)
-                                add("refresh" to refresh.toString())
-                                cursor?.let { add("cursor" to it) }
-                            }
-                            .toTypedArray()
-                    ),
+                "/v1/me/pulse/charts" +
+                    query("limit" to limit.toString(), "offset" to offset.toString()),
                 token,
-                timeout = 60_000,
+                timeout = 15_000,
+            )
+        )
+
+    suspend fun result(token: String, id: String, refresh: Boolean = false): PulseResult =
+        VoxJson.decodeFromString(
+            request(
+                "GET",
+                "/v1/me/pulse/charts/$id/result" +
+                    query("timezone" to timezone, "refresh" to refresh.toString()),
+                token,
+                timeout = 30_000,
             )
         )
 
@@ -89,7 +94,9 @@ object PulseApi {
     }
 
     suspend fun measurements(token: String): List<Measurement> =
-        VoxJson.decodeFromString(request("GET", "/v1/me/pulse/measurements" + query("timezone" to timezone), token))
+        VoxJson.decodeFromString(
+            request("GET", "/v1/me/pulse/measurements" + query("timezone" to timezone), token)
+        )
 
     private suspend fun request(
         method: String,

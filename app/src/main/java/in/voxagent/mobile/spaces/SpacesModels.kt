@@ -30,6 +30,10 @@ data class SpaceNode(
     val title: String = "",
     val body: String = "",
     val state: String = "done",
+    val created_at: String = "",
+    val derived_from: List<String> = emptyList(),
+    val position: SavedNodePosition? = null,
+    val data: JsonObject = JsonObject(emptyMap()),
 )
 
 @Serializable data class SpaceEdge(val id: String, val from_node: String, val to_node: String)
@@ -64,3 +68,9 @@ data class NodePatch(
     val body: String? = null,
     val state: String? = null,
 )
+
+@Serializable data class SpacesCount(val count: Int, val rev: String)
+
+@Serializable data class SpacesSnapshot(val rev: String?, val spaces: List<Space>)
+
+@Serializable data class SavedNodePosition(val x: Float = 0f, val y: Float = 0f)

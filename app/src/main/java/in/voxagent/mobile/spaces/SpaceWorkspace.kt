@@ -20,6 +20,7 @@ internal fun ColumnScope.SpaceWorkspace(
     onSelect: (SpaceNode) -> Unit,
     onChat: () -> Unit,
     onCommit: () -> Unit,
+    onStop: () -> Unit,
 ) {
     var cards by rememberSaveable(graph.space.id) { mutableStateOf(false) }
     Row(
@@ -40,6 +41,8 @@ internal fun ColumnScope.SpaceWorkspace(
             Text(if (cards) "Show map" else "Show cards", fontSize = 11.sp)
         }
     }
+    if (graph.space.run_state == "running" && graph.space.editable)
+        TextButton(onClick = onStop, enabled = !busy) { Text("Stop research", color = CoralPulse) }
     HorizontalDivider(color = BorderSubtle)
     if (cards) {
         LazyColumn(

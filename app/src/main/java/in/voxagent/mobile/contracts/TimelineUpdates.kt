@@ -71,13 +71,16 @@ data class TimelineEventWithEvidence(
 
 @Serializable
 data class TimelineQuery(
+    val spending_only: Boolean? = null,
+    val merchant: String? = null,
+    val category: String? = null,
     val cursor: String? = null,
     val end_at: String? = null,
     val event_type_id: String? = null,
     val event_type_value: String? = null,
     val group_id: String? = null,
     val group_value: String? = null,
-    val limit: Long? = null,
+    val limit: Long? = 30,
     val record_state: String? = null,
     val start_at: String? = null,
 )
@@ -96,12 +99,7 @@ data class TimelineCountsQuery(
     val timezone: String,
 )
 
-@Serializable
-data class TimelineDayCount(
-    val category: String,
-    val count: Long,
-    val day: String,
-)
+@Serializable data class TimelineDayCount(val category: String, val count: Long, val day: String)
 
 @Serializable
 data class UpdateItem(
@@ -137,20 +135,22 @@ data class UpdatesQuery(
     val status: String? = null,
 )
 
+@Serializable data class JobInputRequest(val data: JsonElement, val input_type: String)
+
+@Serializable data class JobRetryRequest(val idempotency_key: String? = null)
+
 @Serializable
-data class JobInputRequest(
-    val data: JsonElement,
-    val input_type: String,
+data class JobActionResponse(val job_id: String, val message: String, val status: String)
+
+@Serializable data class TimelineCategoryCount(val category: String, val count: Long)
+
+@Serializable
+data class TimelineDaySummary(
+    val day: String,
+    val count: Long,
+    val rev: String,
+    val categories: List<TimelineCategoryCount> = emptyList(),
 )
 
 @Serializable
-data class JobRetryRequest(
-    val idempotency_key: String? = null,
-)
-
-@Serializable
-data class JobActionResponse(
-    val job_id: String,
-    val message: String,
-    val status: String,
-)
+data class TimelineDaysResponse(val revision: Long, val days: List<TimelineDaySummary>)

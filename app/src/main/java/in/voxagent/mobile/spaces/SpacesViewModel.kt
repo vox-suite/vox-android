@@ -15,13 +15,51 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.jsonPrimitive
 
-class SpacesViewModel(private val token: () -> String?) : ViewModel() {
+class SpacesViewModel(
+    private val token: () -> String?,
+    private val cache: `in`.voxagent.mobile.cache.DeviceCache?,
+) : ViewModel() {
+    constructor(token: () -> String?) : this(token, null)
+
     private val mutableUi = MutableStateFlow(SpacesUiState())
     val ui = mutableUi.asStateFlow()
     private var refreshJob: Job? = null
+    private var mutationJob: Job? = null
     private var revision = 0L
     private var loadGeneration = 0L
     private val streamed = HashMap<String, String>()
+    private var listRev: String? = null
+    private var hydrated = false
+    private var persistJob: Job? = null
+    private val cacheEpoch = cache?.epoch ?: `in`.voxagent.mobile.cache.DeviceCaches.epoch()
+    private val reset: () -> Unit = {
+        revision++
+        loadGeneration++
+        refreshJob?.cancel()
+        persistJob?.cancel()
+        mutationJob?.cancel()
+        streamed.clear()
+        mutableUi.value = SpacesUiState(loading = false)
+    }
+
+    init {
+        `in`.voxagent.mobile.cache.DeviceCaches.register(reset)
+    }
+
+    private fun persist() {
+        persistJob?.cancel()
+        val snapshot = SpacesSnapshot(listRev, mutableUi.value.spaces)
+        persistJob =
+            viewModelScope.launch {
+                kotlinx.coroutines.delay(1500)
+                cache?.write(snapshot)
+            }
+    }
+
+    override fun onCleared() {
+        `in`.voxagent.mobile.cache.DeviceCaches.unregister(reset)
+        super.onCleared()
+    }
 
     private fun withStreams(graph: SpaceGraph): SpaceGraph =
         if (streamed.isEmpty()) graph
@@ -62,7 +100,8 @@ class SpacesViewModel(private val token: () -> String?) : ViewModel() {
                                                 g.copy(
                                                     nodes =
                                                         g.nodes.map {
-                                                            if (it.id == nodeId) it.copy(body = text)
+                                                            if (it.id == nodeId)
+                                                                it.copy(body = text)
                                                             else it
                                                         }
                                                 )
@@ -72,18 +111,18 @@ class SpacesViewModel(private val token: () -> String?) : ViewModel() {
                             }
                         }
                 }
-            live.events
-                .filter { event ->
-                    event.type != "space_node_stream" &&
-                    (event.type == "live_reconnected" ||
-                        (event.type.startsWith("space_") &&
-                            (mutableUi.value.selectedId == null ||
-                                event.payload["space_id"]?.jsonPrimitive?.content ==
-                                    mutableUi.value.selectedId ||
-                                event.payload["space_id"] == null)))
-                }
-                .conflate()
-                .collect { load() }
+                live.events
+                    .filter { event ->
+                        event.type != "space_node_stream" &&
+                            (event.type == "live_reconnected" ||
+                                (event.type.startsWith("space_") &&
+                                    (mutableUi.value.selectedId == null ||
+                                        event.payload["space_id"]?.jsonPrimitive?.content ==
+                                            mutableUi.value.selectedId ||
+                                        event.payload["space_id"] == null)))
+                    }
+                    .conflate()
+                    .collect { load(countFirst = false) }
             }
         } finally {
             refreshJob?.cancel()
@@ -94,6 +133,7 @@ class SpacesViewModel(private val token: () -> String?) : ViewModel() {
         if (mutableUi.value.busy) return
         revision++
         refreshJob?.cancel()
+        streamed.clear()
         mutableUi.update {
             it.copy(
                 selectedId = id,
@@ -115,20 +155,48 @@ class SpacesViewModel(private val token: () -> String?) : ViewModel() {
         refreshJob = viewModelScope.launch { load() }
     }
 
-    private suspend fun load() {
+    private suspend fun load(countFirst: Boolean = true) {
+        if (!`in`.voxagent.mobile.cache.DeviceCaches.active(cacheEpoch)) return
         val id = mutableUi.value.selectedId
         val expectedRevision = revision
         val generation = ++loadGeneration
         fun current() =
             mutableUi.value.selectedId == id &&
                 revision == expectedRevision &&
-                loadGeneration == generation
+                loadGeneration == generation &&
+                `in`.voxagent.mobile.cache.DeviceCaches.active(cacheEpoch)
         try {
             val bearer = token() ?: error("Sign in to view your spaces.")
             if (id == null) {
+                if (!hydrated) {
+                    val saved = cache?.read<SpacesSnapshot>()
+                    if (!current()) return
+                    if (saved != null) {
+                        listRev = saved.rev
+                        mutableUi.update { it.copy(spaces = saved.spaces, loading = false) }
+                    }
+                    hydrated = true
+                }
+                val meta = if (countFirst) SpacesApi.count(bearer) else null
+                if (!current()) return
+                if (meta != null && (meta.count == 0 || (meta.rev == listRev))) {
+                    listRev = meta.rev
+                    mutableUi.update {
+                        it.copy(
+                            spaces = if (meta.count == 0) emptyList() else it.spaces,
+                            loading = false,
+                            error = null,
+                        )
+                    }
+                    persist()
+                    return
+                }
                 val spaces = SpacesApi.list(bearer)
-                if (current())
+                if (current()) {
+                    listRev = meta?.rev
                     mutableUi.update { it.copy(spaces = spaces, loading = false, error = null) }
+                    persist()
+                }
             } else {
                 val (graph, messages) =
                     coroutineScope {
@@ -138,7 +206,12 @@ class SpacesViewModel(private val token: () -> String?) : ViewModel() {
                     }
                 if (current())
                     mutableUi.update {
-                        it.copy(graph = withStreams(graph), messages = messages, loading = false, error = null)
+                        it.copy(
+                            graph = withStreams(graph),
+                            messages = messages,
+                            loading = false,
+                            error = null,
+                        )
                     }
             }
         } catch (e: Exception) {
@@ -151,20 +224,23 @@ class SpacesViewModel(private val token: () -> String?) : ViewModel() {
     }
 
     private fun mutate(action: suspend (String) -> Unit) {
-        if (mutableUi.value.busy) return
+        if (mutableUi.value.busy || !`in`.voxagent.mobile.cache.DeviceCaches.active(cacheEpoch))
+            return
         revision++
+        listRev = null
         refreshJob?.cancel()
         mutableUi.update { it.copy(busy = true, error = null) }
-        viewModelScope.launch {
-            try {
-                action(token() ?: error("Sign in to update your space."))
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                mutableUi.update { it.copy(error = e.message ?: "Could not update space.") }
-            } finally {
-                mutableUi.update { it.copy(busy = false) }
+        mutationJob =
+            viewModelScope.launch {
+                try {
+                    action(token() ?: error("Sign in to update your space."))
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    mutableUi.update { it.copy(error = e.message ?: "Could not update space.") }
+                } finally {
+                    mutableUi.update { it.copy(busy = false) }
+                }
             }
-        }
     }
 
     fun create(title: String, intent: String, onCreated: () -> Unit) {
@@ -183,16 +259,23 @@ class SpacesViewModel(private val token: () -> String?) : ViewModel() {
 
     fun drop(id: String, onDropped: () -> Unit) = mutate { bearer ->
         SpacesApi.drop(id, bearer)
+        mutableUi.update {
+            it.copy(
+                selectedId = if (it.selectedId == id) null else it.selectedId,
+                spaces = it.spaces.filter { space -> space.id != id },
+            )
+        }
+        persist()
         revision++
         onDropped()
         load()
     }
 
-    fun send(text: String, onSent: () -> Unit = {}) {
+    fun send(text: String, nodeId: String? = null, onSent: () -> Unit = {}) {
         val graph = mutableUi.value.graph ?: return
         if (!graph.space.editable || text.isBlank()) return
         mutate { bearer ->
-            SpacesApi.chat(graph.space.id, text.trim(), bearer)
+            SpacesApi.chat(graph.space.id, text.trim(), bearer, nodeId)
             revision++
             onSent()
             load()
@@ -231,6 +314,24 @@ class SpacesViewModel(private val token: () -> String?) : ViewModel() {
                     graph = it.graph?.let { g -> g.copy(space = g.space.copy(state = "committed")) },
                 )
             }
+            load()
+        }
+    }
+
+    fun stop() {
+        val graph = mutableUi.value.graph ?: return
+        if (!graph.space.editable || graph.space.run_state != "running") return
+        mutate { bearer ->
+            SpacesApi.stop(graph.space.id, bearer)
+            load()
+        }
+    }
+
+    fun retry(node: SpaceNode) {
+        val graph = mutableUi.value.graph ?: return
+        if (!graph.space.editable || graph.space.run_state == "running") return
+        mutate { bearer ->
+            SpacesApi.retry(graph.space.id, node.id, bearer)
             load()
         }
     }

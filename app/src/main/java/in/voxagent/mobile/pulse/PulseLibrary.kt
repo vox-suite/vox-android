@@ -5,14 +5,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import `in`.voxagent.mobile.ui.kit.ProductIntroduction
 import `in`.voxagent.mobile.ui.theme.*
 
 @Composable
@@ -23,34 +22,19 @@ internal fun ColumnScope.PulseLibrary(ui: PulseUiState, viewModel: PulseViewMode
     }
     val empty = ui.canvas?.charts.isNullOrEmpty()
     if (empty && ui.error == null) {
-        Column(
-            Modifier.weight(1f).fillMaxWidth().padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text("◌", color = PulseMint, fontSize = 64.sp)
-            Text(
-                "No charts yet",
-                color = Mist,
-                fontSize = 24.sp,
-                modifier = Modifier.padding(top = 20.dp),
-            )
-            Text(
-                "Pulse turns your connected apps into small, living charts — what you listen to, what you play, where your money goes.",
-                color = SmokeDark,
-                fontSize = 14.sp,
-                lineHeight = 22.sp,
-                modifier = Modifier.padding(vertical = 16.dp),
-            )
-            Button(onClick = { viewModel.go(PulseMode.Suggestions) }) {
-                Icon(Icons.Outlined.Add, null, Modifier.size(18.dp))
-                Text("Add your first chart", modifier = Modifier.padding(start = 8.dp))
-            }
-        }
+        ProductIntroduction(spaces = false) { viewModel.go(PulseMode.Suggestions) }
         return
+    }
+    val control = `in`.voxagent.mobile.control.LocalAppControl.current
+    val context = control?.context?.collectAsState()?.value
+    val scroll = androidx.compose.foundation.lazy.rememberLazyListState()
+    LaunchedEffect(context?.pulseId, ui.canvas?.charts?.map { it.id }) {
+        val index = ui.canvas?.charts?.indexOfFirst { it.id == context?.pulseId } ?: -1
+        if (index >= 0) scroll.animateScrollToItem(index)
     }
     LazyColumn(
         Modifier.weight(1f),
+        state = scroll,
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
@@ -78,7 +62,20 @@ internal fun ColumnScope.PulseLibrary(ui: PulseUiState, viewModel: PulseViewMode
                         TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
                     },
                 )
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier =
+                    Modifier.clickable { control?.patch { it.copy(pulseId = chart.id) } }
+                        .then(
+                            if (context?.pulseId == chart.id)
+                                Modifier.border(
+                                    1.dp,
+                                    PulseMint.copy(alpha = .5f),
+                                    RoundedCornerShape(14.dp),
+                                )
+                            else Modifier
+                        ),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.weight(1f)) {
                         PulseRangeControls(definition, enabled = !ui.saving) {

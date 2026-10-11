@@ -8,26 +8,6 @@ class SpacesTest {
     private fun node(id: String, kind: String) = SpaceNode(id = id, kind = kind, title = id)
 
     @Test
-    fun goalStaysCentralAndEveryNodeHasAUniquePosition() {
-        val nodes =
-            listOf(node("option", "option"), node("goal", "goal")) +
-                (0..11).map { node("research$it", "research") } +
-                listOf(node("step", "step"))
-        val layout = radialLayout(nodes)
-        assertTrue(layout.getValue("goal").central)
-        assertEquals(nodes.size, layout.size)
-        assertEquals(nodes.size, layout.values.map { it.x to it.y }.toSet().size)
-        assertTrue(layout.getValue("research0").x < layout.getValue("goal").x)
-        assertTrue(layout.getValue("step").y > layout.getValue("goal").y)
-    }
-
-    @Test
-    fun emptyGraphAndGoalFallbackAreSupported() {
-        assertTrue(radialLayout(emptyList()).isEmpty())
-        assertTrue(radialLayout(listOf(node("first", "option"))).getValue("first").central)
-    }
-
-    @Test
     fun committedOrDroppedSpacesCannotBeEdited() {
         assertFalse(Space(id = "a", state = "committed").editable)
         assertFalse(Space(id = "a", state = "dropped").editable)

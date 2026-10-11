@@ -11,8 +11,8 @@ import kotlin.math.pow
 import kotlin.math.sin
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 
 data class CategoryStyle(val bg: Color, val border: Color, val dot: Color, val subtext: Color)
@@ -227,18 +227,3 @@ fun spanSubtitle(span: Span): String? =
 
 fun isEstimated(span: Span): Boolean =
     (dataObject(span)?.get("estimated") as? JsonPrimitive)?.booleanOrNull == true
-
-fun isProviderOwned(span: Span): Boolean =
-    span.source in setOf("google_calendar", "spotify", "youtube", "google_maps")
-
-fun sourceLabel(span: Span): String =
-    when (span.source) {
-        "spotify" -> "Spotify"
-        "youtube" -> "YouTube"
-        "google_maps" -> "Google Maps"
-        "playstation" -> "PlayStation"
-        "google_calendar" -> "Google Calendar"
-        "swiggy" -> "Swiggy"
-        "zomato" -> "Zomato"
-        else -> span.source.replace('_', ' ').replaceFirstChar { it.uppercase() }
-    }

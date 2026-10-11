@@ -34,7 +34,7 @@ private val protocolJson = Json {
 
 @Serializable private data class VoiceBootstrap(val session_id: String, val ticket: String)
 
-class VoiceSession(context: Context) {
+class VoiceSession(context: Context, private val deviceId: suspend () -> String) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val sessionStore = SessionStore(context.applicationContext)
     private val audioEngine = VoiceAudioEngine(context.applicationContext)
@@ -81,9 +81,15 @@ class VoiceSession(context: Context) {
         startTimer(id, token)
         scope.launch {
             try {
+                val device = deviceId()
+                if (id != generation || sessionStore.currentToken() != token) return@launch
                 val bootstrap =
                     protocolJson.decodeFromString<VoiceBootstrap>(
-                        VoxHttp.postJson("/v1/me/desktop-voice/sessions", "{}", token)
+                        VoxHttp.postJson(
+                            "/v1/me/desktop-voice/sessions",
+                            "{\"device_id\":\"$device\"}",
+                            token,
+                        )
                     )
                 synchronized(this@VoiceSession) {
                     if (id != generation) return@synchronized
@@ -159,7 +165,8 @@ class VoiceSession(context: Context) {
                         webSocket.cancel()
                         return
                     }
-                    socketConnectedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - sessionStarted)
+                    socketConnectedMs =
+                        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - sessionStarted)
                     if (
                         sessionStore.currentToken() != token ||
                             !webSocket.send(
@@ -214,11 +221,11 @@ class VoiceSession(context: Context) {
                                 audioEngine.mark(message.name)
                             }
                             is VoiceServerMessage.Clear -> {
+                                audioGeneration = message.generation
                                 audioEngine.clearPlayback()
                                 receivedAudio = false
                                 reportedPlayback = false
                                 playbackPositionBeforeAudio = audioEngine.playbackPosition()
-                                _events.tryEmit(VoiceEvent.Interrupted)
                             }
                             is VoiceServerMessage.Error -> terminate(id, "Vox voice session failed")
                         }
@@ -273,8 +280,8 @@ class VoiceSession(context: Context) {
                 packetizer.clear()
                 captureMuted = currentlyMuted
             }
-            for (frame in
-                packetizer.accept(if (currentlyMuted) ShortArray(samples.size) else samples)) {
+            if (currentlyMuted) return@startCapture
+            for (frame in packetizer.accept(samples)) {
                 if (socket.queueSize() > 16000 || !socket.send(frame.toByteString())) {
                     scope.launch { terminate(id, "Voice upload stalled. Try reconnecting.") }
                     break
@@ -324,7 +331,7 @@ class VoiceSession(context: Context) {
                                 }
                                 if (
                                     _status.value == VoiceStatus.CONNECTING &&
-                                        System.nanoTime() - started > TimeUnit.SECONDS.toNanos(15)
+                                        System.nanoTime() - started > TimeUnit.SECONDS.toNanos(30)
                                 ) {
                                     terminate(id, "Vox voice connection timed out")
                                     return

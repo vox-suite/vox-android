@@ -43,10 +43,19 @@ internal val PulseColors =
 
 @Composable
 fun PulseScreen(token: () -> String?, bottomInset: Dp = 88.dp) {
+    val context = androidx.compose.ui.platform.LocalContext.current.applicationContext
+    val cache = remember(context) { `in`.voxagent.mobile.cache.DeviceCache(context, "pulse") }
     val latestToken by rememberUpdatedState(token)
     val viewModel: PulseViewModel =
-        viewModel(factory = viewModelFactory { initializer { PulseViewModel { latestToken() } } })
+        viewModel(
+            key = "pulse:${cache.identity}:${cache.epoch}",
+            factory = viewModelFactory { initializer { PulseViewModel({ latestToken() }, cache) } },
+        )
     val ui by viewModel.ui.collectAsState()
+    val control = `in`.voxagent.mobile.control.LocalAppControl.current
+    val actions = control?.actions?.collectAsState()?.value ?: 0
+    LaunchedEffect(actions) { if (actions > 0) viewModel.reload(refresh = true) }
+
     val owner = LocalLifecycleOwner.current
     LaunchedEffect(owner, viewModel) {
         owner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) { viewModel.observe() }

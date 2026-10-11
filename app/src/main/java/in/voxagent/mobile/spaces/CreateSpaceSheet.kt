@@ -19,7 +19,6 @@ internal fun CreateSpaceSheet(
     onClose: () -> Unit,
     onCreate: (String, String) -> Unit,
 ) {
-    var title by rememberSaveable { mutableStateOf("") }
     var intent by rememberSaveable { mutableStateOf("") }
     val currentBusy by rememberUpdatedState(busy)
     ModalBottomSheet(
@@ -49,18 +48,9 @@ internal fun CreateSpaceSheet(
             )
             ErrorBanner(error)
             OutlinedTextField(
-                title,
-                { title = it },
-                label = { Text("Title") },
-                placeholder = { Text("Weekend getaway near Bangalore") },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !busy,
-                singleLine = true,
-            )
-            OutlinedTextField(
                 intent,
                 { intent = it },
-                label = { Text("Vision & intent") },
+                label = { Text("What are you thinking about?") },
                 placeholder = {
                     Text("Plan a short trip. Compare places, driving time and a realistic budget.")
                 },
@@ -76,8 +66,13 @@ internal fun CreateSpaceSheet(
                     Text("Cancel")
                 }
                 Button(
-                    onClick = { onCreate(title, intent) },
-                    enabled = !busy && title.isNotBlank() && intent.isNotBlank(),
+                    onClick = {
+                        onCreate(
+                            intent.trim().split(Regex("\\s+")).take(5).joinToString(" "),
+                            intent,
+                        )
+                    },
+                    enabled = !busy && intent.isNotBlank(),
                     modifier = Modifier.weight(1f),
                 ) {
                     Text(if (busy) "Creating…" else "Create space")

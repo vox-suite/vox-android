@@ -12,7 +12,10 @@ import kotlinx.serialization.json.put
 
 object SpacesApi {
     suspend fun list(token: String): List<Space> =
-        VoxJson.decodeFromString(request("GET", "/v1/me/spaces", token))
+        VoxJson.decodeFromString(request("GET", "/v1/me/spaces?summary=true", token))
+
+    suspend fun count(token: String): SpacesCount =
+        VoxJson.decodeFromString(request("GET", "/v1/me/spaces/count", token))
 
     suspend fun graph(id: String, token: String): SpaceGraph =
         VoxJson.decodeFromString(request("GET", "/v1/me/spaces/$id", token))
@@ -39,12 +42,16 @@ object SpacesApi {
         request("DELETE", "/v1/me/spaces/$id", token)
     }
 
-    suspend fun chat(id: String, text: String, token: String) {
+    suspend fun chat(id: String, text: String, token: String, nodeId: String? = null) {
         request(
             "POST",
             "/v1/me/spaces/$id/chat",
             token,
-            buildJsonObject { put("message", text) }.toString(),
+            buildJsonObject {
+                    put("message", text)
+                    nodeId?.let { put("node_id", it) }
+                }
+                .toString(),
         )
     }
 
@@ -57,6 +64,14 @@ object SpacesApi {
                 VoxJson.encodeToString(patch),
             )
         )
+
+    suspend fun stop(id: String, token: String) {
+        request("POST", "/v1/me/spaces/$id/stop", token)
+    }
+
+    suspend fun retry(id: String, node: String, token: String) {
+        request("POST", "/v1/me/spaces/$id/nodes/$node/retry", token)
+    }
 
     suspend fun commit(id: String, token: String): CommitSpaceResult =
         VoxJson.decodeFromString(request("POST", "/v1/me/spaces/$id/commit", token))

@@ -28,7 +28,8 @@ import kotlin.math.roundToInt
 
 @Composable
 fun SpaceCanvas(graph: SpaceGraph, selectedId: String?, onSelect: (SpaceNode) -> Unit) {
-    val positions = remember(graph.nodes.map { it.id to it.kind }) { radialLayout(graph.nodes) }
+    val positions =
+        remember(graph.nodes, graph.edges) { dependencyLayout(graph.nodes, graph.edges) }
     var zoom by remember(graph.space.id) { mutableFloatStateOf(0.5f) }
     var pan by remember(graph.space.id) { mutableStateOf(Offset.Zero) }
     val density = LocalDensity.current
@@ -39,9 +40,10 @@ fun SpaceCanvas(graph: SpaceGraph, selectedId: String?, onSelect: (SpaceNode) ->
         fun fit() {
             if (positions.isEmpty()) return
             val minX = positions.values.minOf { it.x }
-            val maxX = positions.values.maxOf { it.x } + 220
+            val maxX = positions.values.maxOf { it.x } + SPACE_NODE_WIDTH
             val minY = positions.values.minOf { it.y }
-            val maxY = positions.values.maxOf { it.y } + 120
+            val maxY =
+                graph.nodes.maxOf { node -> positions.getValue(node.id).y + nodeHeight(node) }
             zoom =
                 minOf(
                         maxWidth.value / (maxX - minX + 80),
@@ -78,18 +80,16 @@ fun SpaceCanvas(graph: SpaceGraph, selectedId: String?, onSelect: (SpaceNode) ->
             ) {
                 Canvas(Modifier.fillMaxSize()) {
                     val origin = Offset(size.width / 2, size.height / 2)
-                    drawCircle(
-                        BorderSubtle.copy(alpha = 0.22f),
-                        340.dp.toPx(),
-                        origin,
-                        style = Stroke(1.dp.toPx()),
-                    )
-                    drawCircle(
-                        BorderSubtle.copy(alpha = 0.12f),
-                        630.dp.toPx(),
-                        origin,
-                        style = Stroke(1.dp.toPx()),
-                    )
+                    val gap = 24.dp.toPx()
+                    var x = origin.x % gap
+                    while (x < size.width) {
+                        var y = origin.y % gap
+                        while (y < size.height) {
+                            drawCircle(Color(0xFF32383F), 1.dp.toPx(), Offset(x, y))
+                            y += gap
+                        }
+                        x += gap
+                    }
                     graph.edges.forEach { edge ->
                         val from = positions[edge.from_node] ?: return@forEach
                         val to = positions[edge.to_node] ?: return@forEach
@@ -98,13 +98,33 @@ fun SpaceCanvas(graph: SpaceGraph, selectedId: String?, onSelect: (SpaceNode) ->
                                 edge.from_node == selectedId ||
                                 edge.to_node == selectedId
                         val start =
-                            origin + Offset((from.x + 220).dp.toPx(), (from.y + 60).dp.toPx())
-                        val end = origin + Offset(to.x.dp.toPx(), (to.y + 60).dp.toPx())
-                        val bend = maxOf(80.dp.toPx(), kotlin.math.abs(end.x - start.x) / 2)
+                            origin +
+                                Offset(
+                                    (from.x + SPACE_NODE_WIDTH).dp.toPx(),
+                                    (from.y +
+                                            nodeHeight(
+                                                graph.nodes.first { it.id == edge.from_node }
+                                            ) / 2)
+                                        .dp
+                                        .toPx(),
+                                )
+                        val end =
+                            origin +
+                                Offset(
+                                    to.x.dp.toPx(),
+                                    (to.y +
+                                            nodeHeight(
+                                                graph.nodes.first { it.id == edge.to_node }
+                                            ) / 2)
+                                        .dp
+                                        .toPx(),
+                                )
                         val path =
                             Path().apply {
                                 moveTo(start.x, start.y)
-                                cubicTo(start.x + bend, start.y, end.x - bend, end.y, end.x, end.y)
+                                lineTo((start.x + end.x) / 2, start.y)
+                                lineTo((start.x + end.x) / 2, end.y)
+                                lineTo(end.x, end.y)
                             }
                         drawPath(
                             path,
@@ -129,8 +149,8 @@ fun SpaceCanvas(graph: SpaceGraph, selectedId: String?, onSelect: (SpaceNode) ->
                                             .roundToInt(),
                                     )
                                 }
-                                .width(220.dp)
-                                .height(120.dp),
+                                .width(SPACE_NODE_WIDTH.dp)
+                                .height(nodeHeight(node).dp),
                         onClick = { onSelect(node) },
                     )
                 }
@@ -158,7 +178,7 @@ fun SpaceCanvas(graph: SpaceGraph, selectedId: String?, onSelect: (SpaceNode) ->
             }
         }
         Text(
-            "RESEARCH  /  OPTIONS  /  PLAN",
+            "Research → Findings → Plan",
             color = SmokeDark,
             fontFamily = FontFamily.Monospace,
             fontSize = 9.sp,
@@ -178,7 +198,7 @@ fun SpaceCanvas(graph: SpaceGraph, selectedId: String?, onSelect: (SpaceNode) ->
             ) {
                 Text("−", fontSize = 20.sp)
             }
-            OutlinedButton(onClick = { fit() }) { Text("Fit map", fontSize = 12.sp) }
+            OutlinedButton(onClick = { fit() }) { Text("Fit canvas", fontSize = 12.sp) }
             OutlinedButton(
                 onClick = {
                     val next = (zoom * 1.3f).coerceAtMost(2f)
@@ -210,7 +230,7 @@ fun SpaceNodeCard(
             BorderStroke(
                 1.dp,
                 if (selected) CoralPulse
-                else if (central) Mist.copy(alpha = 0.55f) else BorderSubtle,
+                else if (central) Color(0xFFF5B83D).copy(alpha = 0.55f) else BorderSubtle,
             ),
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -246,7 +266,7 @@ fun SpaceNodeCard(
                     node.body,
                     color = SmokeDark,
                     fontSize = 11.sp,
-                    maxLines = 2,
+                    maxLines = 6,
                     overflow = TextOverflow.Ellipsis,
                 )
         }

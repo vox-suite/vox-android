@@ -37,63 +37,106 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import `in`.voxagent.mobile.net.LiveHub
 import `in`.voxagent.mobile.spans.Span
-import `in`.voxagent.mobile.spans.SpanCollection
 import `in`.voxagent.mobile.ui.VoxDarkScreen
 import `in`.voxagent.mobile.ui.kit.VoxChip
 import `in`.voxagent.mobile.ui.kit.VoxErrorBar
 import `in`.voxagent.mobile.ui.kit.VoxSegmented
 import `in`.voxagent.mobile.ui.theme.BorderSubtle
 import `in`.voxagent.mobile.ui.theme.CoralPulse
-import `in`.voxagent.mobile.ui.theme.GraphiteDark
 import `in`.voxagent.mobile.ui.theme.Mist
 import `in`.voxagent.mobile.ui.theme.Obsidian
-import `in`.voxagent.mobile.spans.DayKey
 import `in`.voxagent.mobile.ui.theme.SmokeDark
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlinx.coroutines.delay
 
 @Composable
-fun TimelineScreen(
-    token: () -> String?,
-    bottomInset: Dp,
-    onOpenSpan: (Span) -> Unit,
-    reloadSignal: Int,
-    onCollections: (List<SpanCollection>) -> Unit,
-) {
+fun TimelineScreen(token: () -> String?, bottomInset: Dp, onOpenSpan: (Span) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current.applicationContext
+    val session = remember(context) { `in`.voxagent.mobile.auth.SessionStore(context) }
+    val userId = session.getUserId() ?: session.getUserEmail()
+    val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
     val vm: TimelineViewModel =
-        viewModel(factory = viewModelFactory { initializer { TimelineViewModel(token) } })
+        viewModel(
+            key =
+                "timeline:${userId?.let(TimelinePersistence::userKey)}:${java.time.ZoneId.systemDefault().id}:${TimelinePersistence.sessionEpoch()}",
+            factory =
+                viewModelFactory {
+                    initializer { TimelineViewModel(token, context.noBackupFilesDir, userId) }
+                },
+        )
     val ui by vm.ui.collectAsState()
+    val control = `in`.voxagent.mobile.control.LocalAppControl.current
+    val appContext = control?.context?.collectAsState()?.value
+    LaunchedEffect(appContext?.timeline) { vm.applyFilter(appContext?.timeline) }
+    LaunchedEffect(ui.anchor, ui.mode, ui.groupValue, ui.filter) {
+        if (appContext?.timeline != null && vm.ui.value.filter == null)
+            control.patch { it.copy(timeline = null) }
+    }
 
-    LaunchedEffect(reloadSignal) { if (reloadSignal > 0) vm.reload() }
-    LaunchedEffect(ui.collections) { onCollections(ui.collections) }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(vm) {
         val live = LiveHub.get(token)
         live.start()
         live.events.collect { event ->
-            if (event.type == "timeline_updated" || event.type == "live_reconnected") vm.reload()
+            if (event.type == "timeline_updated" || event.type == "live_reconnected")
+                vm.scheduleRefresh()
         }
     }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(60_000)
-            vm.revalidate()
-        }
+    androidx.compose.runtime.DisposableEffect(lifecycle, vm) {
+        val observer =
+            androidx.lifecycle.LifecycleEventObserver { _, event ->
+                if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) vm.scheduleRefresh()
+            }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
     }
 
     VoxDarkScreen {
         Column(Modifier.fillMaxSize().statusBarsPadding().padding(bottom = bottomInset)) {
             Header(ui, vm)
-            GroupChips(ui, vm)
+            if (ui.filter == null) GroupChips(ui, vm)
+            else
+                androidx.compose.material3.TextButton(
+                    onClick = {
+                        control?.patch { it.copy(timeline = null) }
+                        vm.applyFilter(null)
+                    }
+                ) {
+                    Text("Clear spending filter")
+                }
             if (ui.error.isNotEmpty()) VoxErrorBar(ui.error, onRetry = vm::reload)
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 Column(Modifier.fillMaxSize()) {
                     Box(Modifier.weight(1f)) {
-                        if (ui.mode == ViewMode.Month) MonthGrid(ui.anchor, ui.dayCounts, vm::openDay)
-                        else PlanningTimeline(ui.days, ui.spans, onOpenSpan, loading = ui.loading)
+                        if (ui.mode == ViewMode.Month)
+                            MonthGrid(ui.anchor, ui.dayCounts, vm::openDay)
+                        else
+                            androidx.compose.runtime.key(ui.mode, ui.anchor, ui.groupValue) {
+                                PlanningTimeline(
+                                    ui.days,
+                                    ui.spans,
+                                    onOpenSpan,
+                                    loading = ui.loading,
+                                    hourly = ui.mode == ViewMode.Day && ui.days.size <= 30,
+                                    anchor = ui.anchor,
+                                    frontiers = ui.frontiers,
+                                    onLoadMore = vm::loadMore,
+                                    onExtend = vm::extend,
+                                )
+                            }
                     }
                     if (ui.mode != ViewMode.Month && ui.hasMore) {
-                        androidx.compose.material3.TextButton(onClick = { vm.loadMore() }, enabled = !ui.loading) { Text("Load more entries") }
+                        Row(Modifier.horizontalScroll(rememberScrollState())) {
+                            ui.moreDays.forEach { day ->
+                                androidx.compose.material3.TextButton(
+                                    onClick = { vm.loadMore(day) },
+                                    enabled = !ui.loading,
+                                ) {
+                                    Text(
+                                        "More · ${day.format(DateTimeFormatter.ofPattern("MMM d"))}"
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -173,7 +216,7 @@ private fun Header(ui: TimelineUi, vm: TimelineViewModel) {
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = ui.collection?.name ?: ui.anchor.format(titleFmt),
+                    text = ui.anchor.format(titleFmt),
                     color = Mist,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -189,14 +232,6 @@ private fun Header(ui: TimelineUi, vm: TimelineViewModel) {
                     lineHeight = 14.sp,
                     style = titleTextStyle,
                     maxLines = 1,
-                )
-            }
-            ui.collection?.let {
-                Text(
-                    it.kind,
-                    color = GraphiteDark,
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
                 )
             }
             Glyph(if (ui.loading) "…" else "↻") { vm.reload() }
