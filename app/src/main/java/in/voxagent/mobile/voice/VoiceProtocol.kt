@@ -5,13 +5,24 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 sealed class VoiceClientMessage {
-    @Serializable @SerialName("start") data class Start(val ticket: String) : VoiceClientMessage()
+    @Serializable
+    @SerialName("start")
+    data class Start(val ticket: String, val client_metrics: Boolean = true) : VoiceClientMessage()
 
     @Serializable
     @SerialName("playback_finished")
     data class PlaybackFinished(val name: String) : VoiceClientMessage()
 
     @Serializable @SerialName("text") data class Text(val text: String) : VoiceClientMessage()
+
+    @Serializable
+    @SerialName("client_metric")
+    data class ClientMetric(
+        val stage: String,
+        val elapsed_ms: Long,
+        val generation: Long,
+        val buffered_ms: Long,
+    ) : VoiceClientMessage()
 
     @Serializable @SerialName("stop") data object Stop : VoiceClientMessage()
 }
@@ -32,6 +43,10 @@ sealed class VoiceServerMessage {
                 input_mode == "stream" &&
                 session_id.isNotBlank()
     }
+
+    @Serializable
+    @SerialName("audio_start")
+    data class AudioStart(val generation: Long, val audio_kind: String) : VoiceServerMessage()
 
     @Serializable
     @SerialName("mark")

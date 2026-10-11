@@ -307,6 +307,11 @@ class VoiceAudioEngine(context: Context) {
 
     fun isPlaying(): Boolean = synchronized(playbackLock) { progress.remaining(playedFrames()) > 0 }
 
+    fun playbackPosition(): Long = synchronized(playbackLock) { playedFrames() }
+
+    fun bufferedMilliseconds(): Long =
+        synchronized(playbackLock) { progress.remaining(playedFrames()) / 8 }
+
     fun queuedChunkCount(): Int = queuedChunks.get()
 
     fun underrunCount(): Int = audioTrack?.underrunCount ?: 0

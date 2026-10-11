@@ -28,6 +28,7 @@ import okio.ByteString.Companion.toByteString
 
 private val protocolJson = Json {
     ignoreUnknownKeys = true
+    encodeDefaults = true
     classDiscriminator = "type"
 }
 
@@ -43,6 +44,13 @@ class VoiceSession(context: Context) {
     @Volatile private var generation = 0L
     @Volatile private var muted = false
     private var timer: Timer? = null
+    private var sessionStarted = 0L
+    private var bootstrapReceivedMs = 0L
+    private var socketConnectedMs = 0L
+    private var audioGeneration = 0L
+    private var receivedAudio = false
+    private var reportedPlayback = false
+    private var playbackPositionBeforeAudio = 0L
     private val _status = MutableStateFlow(VoiceStatus.IDLE)
     val status = _status.asStateFlow()
     private val _events = MutableSharedFlow<VoiceEvent>(extraBufferCapacity = 16)
@@ -64,6 +72,10 @@ class VoiceSession(context: Context) {
             return
         }
         val id = ++generation
+        sessionStarted = System.nanoTime()
+        audioGeneration = 0
+        receivedAudio = false
+        reportedPlayback = false
         muted = false
         _status.value = VoiceStatus.CONNECTING
         startTimer(id, token)
@@ -80,6 +92,8 @@ class VoiceSession(context: Context) {
                         Request.Builder()
                             .url(bridgeVoiceUrl(BuildConfig.VOX_BRIDGE_BASE_URL))
                             .build()
+                    bootstrapReceivedMs =
+                        TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - sessionStarted)
                     webSocket =
                         socketClient.newWebSocket(
                             request,
@@ -145,6 +159,7 @@ class VoiceSession(context: Context) {
                         webSocket.cancel()
                         return
                     }
+                    socketConnectedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - sessionStarted)
                     if (
                         sessionStore.currentToken() != token ||
                             !webSocket.send(
@@ -177,6 +192,18 @@ class VoiceSession(context: Context) {
                                 }
                                 startAudio(id, webSocket)
                                 _status.value = VoiceStatus.ACTIVE
+                                sendMetric(webSocket, "bootstrap_received", bootstrapReceivedMs)
+                                sendMetric(webSocket, "socket_connected", socketConnectedMs)
+                                sendMetric(webSocket, "microphone_ready")
+                                sendMetric(webSocket, "session_ready")
+                            }
+                            is VoiceServerMessage.AudioStart -> {
+                                if (audioGeneration != message.generation) {
+                                    reportedPlayback = false
+                                    playbackPositionBeforeAudio = audioEngine.playbackPosition()
+                                }
+                                audioGeneration = message.generation
+                                receivedAudio = false
                             }
                             is VoiceServerMessage.Mark -> {
                                 check(
@@ -188,6 +215,9 @@ class VoiceSession(context: Context) {
                             }
                             is VoiceServerMessage.Clear -> {
                                 audioEngine.clearPlayback()
+                                receivedAudio = false
+                                reportedPlayback = false
+                                playbackPositionBeforeAudio = audioEngine.playbackPosition()
                                 _events.tryEmit(VoiceEvent.Interrupted)
                             }
                             is VoiceServerMessage.Error -> terminate(id, "Vox voice session failed")
@@ -203,6 +233,11 @@ class VoiceSession(context: Context) {
                     if (id != generation) return
                     try {
                         check(_status.value == VoiceStatus.ACTIVE)
+                        if (!receivedAudio) {
+                            receivedAudio = true
+                            playbackPositionBeforeAudio = audioEngine.playbackPosition()
+                            sendMetric(webSocket, "first_audio_received")
+                        }
                         audioEngine.enqueueMuLaw(bytes.toByteArray())
                     } catch (_: Exception) {
                         terminate(id, "Voice playback stalled. Try reconnecting.")
@@ -248,6 +283,26 @@ class VoiceSession(context: Context) {
         }
     }
 
+    private fun sendMetric(
+        socket: WebSocket,
+        stage: String,
+        elapsedMs: Long = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - sessionStarted),
+    ) {
+        check(
+            socket.send(
+                protocolJson.encodeToString(
+                    VoiceClientMessage.serializer(),
+                    VoiceClientMessage.ClientMetric(
+                        stage,
+                        elapsedMs,
+                        audioGeneration,
+                        audioEngine.bufferedMilliseconds(),
+                    ),
+                )
+            )
+        )
+    }
+
     private fun startTimer(id: Long, token: String) {
         val started = System.nanoTime()
         var lastAuthCheck = 0L
@@ -277,6 +332,15 @@ class VoiceSession(context: Context) {
                                 if (_status.value == VoiceStatus.ACTIVE) {
                                     try {
                                         val socket = webSocket ?: return
+                                        if (
+                                            receivedAudio &&
+                                                !reportedPlayback &&
+                                                audioEngine.playbackPosition() >
+                                                    playbackPositionBeforeAudio
+                                        ) {
+                                            reportedPlayback = true
+                                            sendMetric(socket, "first_playback_started")
+                                        }
                                         for (name in audioEngine.completedMarks()) {
                                             check(
                                                 socket.queueSize() < 16000 &&
