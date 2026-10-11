@@ -29,6 +29,7 @@ data class AppContext(
     val revision: Long = 0,
     val page: String = "agent",
     val spaceId: String? = null,
+    val projectId: String? = null,
     val pulseId: String? = null,
     val selectedItemId: String? = null,
     val timezone: String = ZoneId.systemDefault().id,
@@ -62,6 +63,7 @@ class AppControlState {
         it.copy(
             page = page,
             spaceId = null,
+            projectId = null,
             pulseId = null,
             selectedItemId = null,
             resourceDetails = null,

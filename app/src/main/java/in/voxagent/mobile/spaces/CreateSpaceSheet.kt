@@ -17,8 +17,21 @@ internal fun CreateSpaceSheet(
     busy: Boolean,
     error: String?,
     onClose: () -> Unit,
-    onCreate: (String, String) -> Unit,
+    onCreate: (String, String, String?) -> Unit,
+    loadProjects: suspend () -> List<`in`.voxagent.mobile.projects.Project>,
 ) {
+    var projects by remember {
+        mutableStateOf<List<`in`.voxagent.mobile.projects.Project>>(emptyList())
+    }
+    var project by rememberSaveable { mutableStateOf<String?>(null) }
+    var projectError by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        try {
+            projects = loadProjects()
+        } catch (e: Exception) {
+            projectError = e.message
+        }
+    }
     var intent by rememberSaveable { mutableStateOf("") }
     val currentBusy by rememberUpdatedState(busy)
     ModalBottomSheet(
@@ -38,8 +51,8 @@ internal fun CreateSpaceSheet(
                 .padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Eyebrow("NEW SPACE")
-            Text("Create a Space", color = Mist, fontSize = 24.sp)
+            Eyebrow("NEW PLAN")
+            Text("Create a Plan", color = Mist, fontSize = 24.sp)
             Text(
                 "Describe what you are thinking of doing. Vox will research options using your available data and build a visual plan.",
                 color = SmokeDark,
@@ -47,6 +60,27 @@ internal fun CreateSpaceSheet(
                 lineHeight = 20.sp,
             )
             ErrorBanner(error)
+            Text("Attach to project (optional)", color = SmokeDark, fontSize = 12.sp)
+            androidx.compose.foundation.lazy.LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item {
+                    FilterChip(
+                        selected = project == null,
+                        onClick = { project = null },
+                        label = { Text("Standalone") },
+                    )
+                }
+                items(projects.size) { index ->
+                    val p = projects[index]
+                    FilterChip(
+                        selected = project == p.id,
+                        onClick = { project = p.id },
+                        label = { Text(p.name) },
+                    )
+                }
+            }
+            ErrorBanner(projectError)
             OutlinedTextField(
                 intent,
                 { intent = it },
@@ -70,12 +104,13 @@ internal fun CreateSpaceSheet(
                         onCreate(
                             intent.trim().split(Regex("\\s+")).take(5).joinToString(" "),
                             intent,
+                            project,
                         )
                     },
                     enabled = !busy && intent.isNotBlank(),
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text(if (busy) "Creating…" else "Create space")
+                    Text(if (busy) "Creating…" else "Create plan")
                 }
             }
         }

@@ -45,6 +45,7 @@ class AppCommandExecutor(private val state: AppControlState, private val token: 
                                     "timeline",
                                     "pulse",
                                     "spaces",
+                                    "projects",
                                     "connections",
                                     "updates",
                                 )
@@ -61,10 +62,18 @@ class AppCommandExecutor(private val state: AppControlState, private val token: 
                                 UUID.fromString(it)
                                 VoxHttp.getJson("/v1/me/pulse/charts/$it", bearer)
                             }
+                        val project =
+                            if (page == "projects")
+                                args.text("projectId")?.also {
+                                    UUID.fromString(it)
+                                    `in`.voxagent.mobile.projects.ProjectsApi.get(it, bearer)
+                                }
+                            else null
                         current()
                         state.patch {
                             it.copy(
                                 page = page,
+                                projectId = project,
                                 spaceId = space,
                                 pulseId = pulse,
                                 selectedItemId = null,
@@ -74,6 +83,7 @@ class AppCommandExecutor(private val state: AppControlState, private val token: 
                         delay(32)
                         buildJsonObject {
                             put("page", page)
+                            project?.let { put("projectId", it) }
                             space?.let { put("spaceId", it) }
                             pulse?.let { put("pulseId", it) }
                         }

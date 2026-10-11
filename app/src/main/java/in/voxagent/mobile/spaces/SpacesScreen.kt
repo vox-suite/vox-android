@@ -136,15 +136,16 @@ internal fun SpacesContent(ui: SpacesUiState, viewModel: SpacesViewModel, bottom
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Eyebrow("VOX / SPACES")
+                            Eyebrow("VOX / PLANS")
                             Text(
-                                "Spaces",
+                                "Plans",
                                 fontSize = 28.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = Mist,
                                 modifier = Modifier.padding(top = 6.dp),
                             )
                         }
+                        TextButton(onClick = { control?.navigate("projects") }) { Text("Projects") }
                         FilledTonalButton(
                             onClick = { creating = true },
                             enabled = !ui.busy,
@@ -152,14 +153,14 @@ internal fun SpacesContent(ui: SpacesUiState, viewModel: SpacesViewModel, bottom
                         ) {
                             Icon(Icons.Outlined.Add, null, Modifier.size(18.dp))
                             Text(
-                                "New space",
+                                "New plan",
                                 fontSize = 12.sp,
                                 modifier = Modifier.padding(start = 4.dp),
                             )
                         }
                     }
                     Text(
-                        if (ui.spaces.isEmpty()) "Nothing here yet" else "${ui.spaces.size} spaces",
+                        if (ui.spaces.isEmpty()) "Nothing here yet" else "${ui.spaces.size} plans",
                         fontSize = 12.sp,
                         color = SmokeDark,
                         modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 20.dp),
@@ -239,7 +240,10 @@ internal fun SpacesContent(ui: SpacesUiState, viewModel: SpacesViewModel, bottom
                     ui.busy,
                     ui.error,
                     { creating = false },
-                    { title, intent -> viewModel.create(title, intent) { creating = false } },
+                    { title, intent, project ->
+                        viewModel.create(title, intent, project) { creating = false }
+                    },
+                    loadProjects = { viewModel.projectOptions() },
                 )
             if (chat && graph != null) SpaceChatSheet(ui, { chat = false }, viewModel)
             graph

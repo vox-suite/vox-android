@@ -7,6 +7,7 @@ import kotlinx.serialization.json.jsonPrimitive
 @Serializable
 data class Space(
     val id: String,
+    val project_id: String? = null,
     val title: String = "",
     val intent: String = "",
     val state: String = "ideating",
@@ -26,6 +27,7 @@ data class Space(
 @Serializable
 data class SpaceNode(
     val id: String,
+    val is_final: Boolean = false,
     val kind: String = "research",
     val title: String = "",
     val body: String = "",

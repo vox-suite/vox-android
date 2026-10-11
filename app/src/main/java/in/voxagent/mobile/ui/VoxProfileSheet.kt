@@ -56,6 +56,7 @@ fun VoxProfileSheet(
     visible: Boolean,
     onDismiss: () -> Unit,
     onSignOut: () -> Unit,
+    onOpenProjects: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     hazeState: HazeState? = null,
     onSyncProfile: (() -> Unit)? = null,
@@ -130,6 +131,19 @@ fun VoxProfileSheet(
                                 color = Smoke,
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 12.sp,
+                            )
+                        }
+                    }
+
+                    if (onOpenProjects != null) {
+                        VoxSettingsGroup {
+                            VoxSettingsRow(
+                                label = "Projects",
+                                showDivider = false,
+                                onClick = {
+                                    onDismiss()
+                                    onOpenProjects()
+                                },
                             )
                         }
                     }

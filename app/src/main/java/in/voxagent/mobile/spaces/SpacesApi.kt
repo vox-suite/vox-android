@@ -23,7 +23,12 @@ object SpacesApi {
     suspend fun messages(id: String, token: String): List<SpaceMessage> =
         VoxJson.decodeFromString(request("GET", "/v1/me/spaces/$id/messages", token))
 
-    suspend fun create(title: String, intent: String, token: String): Space =
+    suspend fun create(
+        title: String,
+        intent: String,
+        token: String,
+        projectId: String? = null,
+    ): Space =
         VoxJson.decodeFromString(
             request(
                 "POST",
@@ -32,6 +37,7 @@ object SpacesApi {
                 buildJsonObject {
                         put("title", title)
                         put("intent", intent)
+                        projectId?.let { put("project_id", it) }
                     }
                     .toString(),
                 30_000,

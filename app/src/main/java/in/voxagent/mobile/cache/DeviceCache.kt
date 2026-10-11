@@ -31,7 +31,9 @@ object DeviceCaches {
     fun clear(root: File) {
         generation++
         resets.toList().forEach { it() }
-        listOf("timeline", "pulse", "spaces").forEach { File(root, it).deleteRecursively() }
+        listOf("timeline", "pulse", "spaces", "projects").forEach {
+            File(root, it).deleteRecursively()
+        }
     }
 
     @Synchronized

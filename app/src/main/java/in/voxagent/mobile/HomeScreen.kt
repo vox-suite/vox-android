@@ -60,6 +60,7 @@ internal fun HomeScreen(
         when (appContext.page) {
             "timeline" -> Destination.Timeline
             "spaces" -> Destination.Spaces
+            "projects" -> Destination.Projects
             "pulse" -> Destination.Pulse
             "connections" -> Destination.Connections
             "updates" -> Destination.Updates
@@ -70,6 +71,7 @@ internal fun HomeScreen(
             when (destination) {
                 Destination.Timeline -> "timeline"
                 Destination.Spaces -> "spaces"
+                Destination.Projects -> "projects"
                 Destination.Pulse -> "pulse"
                 Destination.Connections -> "connections"
                 Destination.Updates -> "updates"
@@ -211,6 +213,13 @@ internal fun HomeScreen(
                 SpacesScreen(token = { latestToken }, bottomInset = 88.dp)
             }
 
+            if (destination == Destination.Projects && token != null) {
+                `in`.voxagent.mobile.projects.ProjectsScreen(
+                    token = { latestToken },
+                    bottomInset = 88.dp,
+                )
+            }
+
             if (destination == Destination.Connections && token != null) {
                 ConnectionsScreen(
                     token = { latestToken },
@@ -285,6 +294,7 @@ internal fun HomeScreen(
                 onSyncProfile = onSyncProfile,
                 onReviewPermissions = onReviewPermissions,
                 permissionsAllSet = permissionsAllSet,
+                onOpenProjects = { navigate(Destination.Projects) },
             )
         }
     }

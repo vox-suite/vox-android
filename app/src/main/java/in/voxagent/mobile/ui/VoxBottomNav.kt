@@ -127,8 +127,10 @@ fun VoxBottomNav(
                     }
                     NavDestinationButton(
                         compact = compact,
-                        selected = destination == Destination.Spaces,
-                        description = "Spaces",
+                        selected =
+                            destination == Destination.Spaces ||
+                                destination == Destination.Projects,
+                        description = "Plans",
                         onClick = { onDestination(Destination.Spaces) },
                     ) { tint ->
                         Icon(
@@ -141,7 +143,7 @@ fun VoxBottomNav(
                     NavDestinationButton(
                         compact = compact,
                         selected = destination == Destination.Pulse,
-                        description = "Pulse",
+                        description = "Insights",
                         onClick = { onDestination(Destination.Pulse) },
                     ) { tint ->
                         Icon(
@@ -151,8 +153,12 @@ fun VoxBottomNav(
                             modifier = Modifier.size(20.dp),
                         )
                     }
-                    NavDestinationButton(compact = compact, selected = destination == Destination.Updates,
-                        description = "Updates", onClick = { onDestination(Destination.Updates) }) { tint ->
+                    NavDestinationButton(
+                        compact = compact,
+                        selected = destination == Destination.Updates,
+                        description = "Updates",
+                        onClick = { onDestination(Destination.Updates) },
+                    ) { tint ->
                         Text("◉", color = tint, modifier = Modifier.size(20.dp))
                     }
                     NavDestinationButton(

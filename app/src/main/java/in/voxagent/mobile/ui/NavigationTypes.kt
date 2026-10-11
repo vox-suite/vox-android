@@ -7,6 +7,7 @@ enum class Destination {
     Home,
     Timeline,
     Spaces,
+    Projects,
     Pulse,
     Connections,
     Updates,

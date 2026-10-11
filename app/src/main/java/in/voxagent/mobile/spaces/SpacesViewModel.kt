@@ -243,10 +243,24 @@ class SpacesViewModel(
             }
     }
 
-    fun create(title: String, intent: String, onCreated: () -> Unit) {
+    suspend fun projectOptions(): List<`in`.voxagent.mobile.projects.Project> {
+        val bearer = token() ?: error("Sign in to load projects")
+        val projects = mutableListOf<`in`.voxagent.mobile.projects.Project>()
+        var cursor: String? = null
+        val seen = mutableSetOf<String>()
+        do {
+            val page = `in`.voxagent.mobile.projects.ProjectsApi.list(bearer, cursor)
+            projects.addAll(page.items)
+            cursor = page.next_cursor
+            if (cursor != null && !seen.add(cursor)) error("Project pagination did not advance")
+        } while (cursor != null)
+        return projects.distinctBy { it.id }
+    }
+
+    fun create(title: String, intent: String, projectId: String? = null, onCreated: () -> Unit) {
         if (title.isBlank() || intent.isBlank()) return
         mutate { bearer ->
-            val space = SpacesApi.create(title.trim(), intent.trim(), bearer)
+            val space = SpacesApi.create(title.trim(), intent.trim(), bearer, projectId)
             refreshJob?.cancel()
             mutableUi.update {
                 it.copy(selectedId = space.id, graph = null, messages = emptyList(), loading = true)
@@ -286,18 +300,9 @@ class SpacesViewModel(
         val graph = mutableUi.value.graph ?: return
         if (!graph.space.editable) return
         mutate { bearer ->
-            val updated = SpacesApi.update(graph.space.id, node.id, patch, bearer)
+            SpacesApi.update(graph.space.id, node.id, patch, bearer)
             revision++
-            mutableUi.update { current ->
-                current.copy(
-                    graph =
-                        current.graph?.let {
-                            it.copy(
-                                nodes = it.nodes.map { n -> if (n.id == updated.id) updated else n }
-                            )
-                        }
-                )
-            }
+            load(countFirst = false)
             onSaved()
         }
     }
