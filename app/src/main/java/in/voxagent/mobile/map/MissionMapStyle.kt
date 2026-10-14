@@ -11,21 +11,38 @@ import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.layers.SymbolLayer
+import org.maplibre.android.style.light.Position
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.android.style.sources.VectorSource
 import org.maplibre.geojson.FeatureCollection
 
-internal fun applyMissionControlLook(style: Style) {
+internal fun applyMissionControlLook(style: Style, isDark: Boolean = true) {
+    try {
+        style.light?.let { light ->
+            light.color = "#eff2ee"
+            light.intensity = if (isDark) 0.5f else 0.12f
+            light.anchor = "viewport"
+            light.position = Position.fromPosition(1.15f, 210f, 30f)
+        }
+    } catch (_: Exception) {
+    }
+
+    val bgColor = if (isDark) "#0b0c0e" else "#c4cac6"
+    val waterColor = if (isDark) "#060708" else "#6b8fa8"
+    val landColor = if (isDark) "#121316" else "#b8beba"
+    val roadColor = if (isDark) "#d0d1d2" else "#8c938f"
+
     for (layer: Layer in style.layers) {
         val id = layer.id.lowercase()
         when (layer) {
-            is BackgroundLayer -> layer.setProperties(PropertyFactory.backgroundColor("#0b0c0e"))
+            is BackgroundLayer -> layer.setProperties(PropertyFactory.backgroundColor(bgColor))
             is FillLayer ->
                 when {
                     "building" in id ->
                         layer.setProperties(PropertyFactory.visibility(Property.NONE))
-                    "water" in id -> layer.setProperties(PropertyFactory.fillColor("#060708"))
-                    "land" in id -> layer.setProperties(PropertyFactory.fillColor("#121316"))
+                    "water" in id -> layer.setProperties(PropertyFactory.fillColor(waterColor))
+                    "land" in id || "park" in id || "landcover" in id || "landuse" in id ->
+                        layer.setProperties(PropertyFactory.fillColor(landColor))
                 }
             is LineLayer ->
                 when {
@@ -37,8 +54,8 @@ internal fun applyMissionControlLook(style: Style) {
                         "bridge" in id ||
                         "tunnel" in id ->
                         layer.setProperties(
-                            PropertyFactory.lineColor("#d0d1d2"),
-                            PropertyFactory.lineOpacity(0.75f),
+                            PropertyFactory.lineColor(roadColor),
+                            PropertyFactory.lineOpacity(if (isDark) 0.75f else 0.95f),
                         )
                 }
             is FillExtrusionLayer ->
@@ -91,6 +108,7 @@ internal fun addExtrusionLayer(
     sourceId: String,
     sourceLayer: String?,
     color: String,
+    verticalGradient: Boolean = false,
 ) {
     if (style.getLayer(id) != null) return
     val layer = FillExtrusionLayer(id, sourceId)
@@ -101,16 +119,33 @@ internal fun addExtrusionLayer(
         PropertyFactory.fillExtrusionHeight(heightExpression()),
         PropertyFactory.fillExtrusionBase(baseExpression()),
         PropertyFactory.fillExtrusionOpacity(1f),
-        PropertyFactory.fillExtrusionVerticalGradient(false),
+        PropertyFactory.fillExtrusionVerticalGradient(verticalGradient),
     )
     val beforeId = extrusionBeforeId(style)
     if (beforeId != null) style.addLayerBelow(layer, beforeId) else style.addLayer(layer)
 }
 
-internal fun add3dBuildings(style: Style) {
+internal fun add3dBuildings(style: Style, isDark: Boolean = true) {
     if (style.getLayer(BUILDINGS_LAYER) != null) return
     val sourceId = findBuildingSource(style) ?: return
-    addExtrusionLayer(style, BUILDINGS_LAYER, sourceId, "building", "#0f0f11")
+    val buildingColor = if (isDark) "#0f0f11" else "#ffffff"
+    addExtrusionLayer(
+        style = style,
+        id = BUILDINGS_LAYER,
+        sourceId = sourceId,
+        sourceLayer = "building",
+        color = buildingColor,
+        verticalGradient = false,
+    )
+}
+
+internal fun updateMissionTheme(style: Style, isDark: Boolean) {
+    applyMissionControlLook(style, isDark)
+    val buildingLayer = style.getLayer(BUILDINGS_LAYER) as? FillExtrusionLayer
+    buildingLayer?.setProperties(
+        PropertyFactory.fillExtrusionColor(if (isDark) "#0f0f11" else "#ffffff"),
+        PropertyFactory.fillExtrusionVerticalGradient(false),
+    )
 }
 
 internal fun addHighlightLayer(style: Style) {

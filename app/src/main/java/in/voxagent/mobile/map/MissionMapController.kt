@@ -31,6 +31,7 @@ import org.maplibre.geojson.Point
 internal class MissionMapController(
     private val context: Context,
     private val token: () -> String?,
+    private var isDark: Boolean = true,
 ) {
     private val prefs = context.getSharedPreferences(PREFS_MAP_CACHE, Context.MODE_PRIVATE)
 
@@ -46,7 +47,7 @@ internal class MissionMapController(
                     .textureMode(true),
             )
             .apply {
-                setBackgroundColor("#040506".toColorInt())
+                setBackgroundColor(if (isDark) "#040506".toColorInt() else "#c4cac6".toColorInt())
 
                 setOnTouchListener { _, _ -> true }
                 onCreate(null)
@@ -109,8 +110,8 @@ internal class MissionMapController(
             )
 
             map.setStyle(Style.Builder().fromUri(STYLE_URL)) { style ->
-                applyMissionControlLook(style)
-                add3dBuildings(style)
+                applyMissionControlLook(style, isDark)
+                add3dBuildings(style, isDark)
                 addHighlightLayer(style)
                 addYouLayer(style)
 
@@ -172,6 +173,15 @@ internal class MissionMapController(
     fun setReaction(callActive: Boolean, voxSpeaking: Boolean) {
         this.callActive = callActive
         this.voxSpeaking = voxSpeaking
+    }
+
+    fun setTheme(isDark: Boolean) {
+        if (this.isDark == isDark) return
+        this.isDark = isDark
+        mapView.setBackgroundColor(if (isDark) "#040506".toColorInt() else "#c4cac6".toColorInt())
+        mapRef?.style?.let { style ->
+            updateMissionTheme(style, isDark)
+        }
     }
 
     private fun paintReaction(nowMs: Long) {
