@@ -108,13 +108,6 @@ val BRAND_CONFIGS =
                 iconRes = R.drawable.ic_youtube,
                 bare = true,
             ),
-        "zomato" to
-            BrandMeta(
-                color = Color(0xFFE23744),
-                tagline = "Food orders and delivery updates",
-                iconRes = R.drawable.ic_zomato,
-                bare = true,
-            ),
     )
 
 val FALLBACK_BRAND =
