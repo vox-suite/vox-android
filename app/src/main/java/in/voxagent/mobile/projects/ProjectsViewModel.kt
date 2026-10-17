@@ -105,6 +105,7 @@ class ProjectsViewModel(private val token: () -> String?, private val cache: Dev
     }
 
     fun open(id: String?) {
+        if (state.value.busy) return
         selected = id
         state.update { it.copy(project = null, selectedId = id, plans = emptyList()) }
         reload()

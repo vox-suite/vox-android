@@ -83,7 +83,7 @@ fun ProjectsScreen(token: () -> String?, bottomInset: Dp = 88.dp) {
                 ) {
                     Column(Modifier.weight(1f)) {
                         if (p != null)
-                            TextButton(onClick = { model.open(null) }) { Text("‹ Projects") }
+                            TextButton(onClick = { model.open(null) }, enabled = !ui.busy) { Text("‹ Projects") }
                         Text(
                             p?.name ?: "Projects",
                             fontSize = 26.sp,
@@ -97,7 +97,7 @@ fun ProjectsScreen(token: () -> String?, bottomInset: Dp = 88.dp) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    if (p != null) TextButton(onClick = { settings = true }) { Text("Edit") }
+                    if (p != null) TextButton(onClick = { settings = true }, enabled = !ui.busy) { Text("Edit") }
                     TextButton(onClick = { model.reload() }, enabled = !ui.busy) { Text("Refresh") }
                 }
                 if (ui.error != null)

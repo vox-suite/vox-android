@@ -55,7 +55,7 @@ data class ProjectMessage(
 
 @Serializable data class ProjectActivity(val id: String, val text: String, val at: String)
 
-@Serializable
+@Serializable(with = ProjectDataSerializer::class)
 data class ProjectData(
     val template: String = "general",
     val notes: String = "",
@@ -63,6 +63,7 @@ data class ProjectData(
     val sources: List<ProjectSource> = emptyList(),
     val messages: List<ProjectMessage> = emptyList(),
     val activity: List<ProjectActivity> = emptyList(),
+    internal val preservedFields: kotlinx.serialization.json.JsonObject = kotlinx.serialization.json.JsonObject(emptyMap()),
 )
 
 @Serializable
