@@ -66,6 +66,7 @@ data class BrandMeta(
 
 val BRAND_CONFIGS =
     mapOf(
+        "steam" to BrandMeta(color = Color(0xFF66C0F4), tagline = "Games and observed playtime", iconRes = R.drawable.ic_steam),
         "playstation" to
             BrandMeta(
                 color = Color(0xFF0070D1),

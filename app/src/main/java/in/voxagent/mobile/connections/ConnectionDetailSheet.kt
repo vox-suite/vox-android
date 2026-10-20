@@ -186,6 +186,10 @@ internal fun ConnectionDetailSheet(
 
             if (connector.id == "gmail" && connection != null) { GmailHistorySection(token) }
 
+            if (connector.id == "steam") {
+                Text("Set Steam Game details to Public and allow playtime to be visible. Vox checks every 15 minutes and records newly observed minutes, not exact session times. Existing lifetime totals are not added as new activity.", color = SmokeDark, fontSize = 13.sp)
+            }
+
             if (connector.id == "playstation") {
                 PlayStationTokenInput(npssoToken, { npssoToken = it }, onOpenExternal)
             }
