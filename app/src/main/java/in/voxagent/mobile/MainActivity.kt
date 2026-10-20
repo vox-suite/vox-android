@@ -28,7 +28,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    AppRoot(authManager = authManager, activity = this)
+                    UpdateGate { AppRoot(authManager = authManager, activity = this) }
                 }
             }
         }

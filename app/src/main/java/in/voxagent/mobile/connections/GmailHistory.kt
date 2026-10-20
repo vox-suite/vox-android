@@ -6,23 +6,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
 
-internal data class HistoryPage(val candidates: List<JsonObject>, val excluded: Int, val next: String?)
+internal data class Backfill(val state: String?, val processed: Int, val imported: Int, val skipped: Int)
 
 internal object GmailHistory {
-    suspend fun scan(token: String, startDate: String, endDate: String, pageToken: String?): HistoryPage = withContext(Dispatchers.IO) {
-        val payload = buildJsonObject {
-            put("start_date", startDate)
-            put("end_date", endDate)
-            put("page_token", pageToken?.let(::JsonPrimitive) ?: JsonNull)
-        }
-        val response = VoxJson.parseToJsonElement(VoxHttp.requestJson("POST", "/v1/connectors/gmail/history/page", payload.toString(), token, 200000)).jsonObject
-        HistoryPage(response["candidates"]!!.jsonArray.map { it.jsonObject }, response["excluded"]!!.jsonPrimitive.int, response["next_page_token"]?.jsonPrimitive?.contentOrNull)
-    }
-
-    suspend fun importSelected(token: String, candidate: JsonObject) = withContext(Dispatchers.IO) {
-        val payload = buildJsonObject {
-            put("message_ids", JsonArray(listOf(candidate["message_id"]!!)))
-        }
-        VoxJson.parseToJsonElement(VoxHttp.requestJson("POST", "/v1/connectors/gmail/history/import", payload.toString(), token, 120000)).jsonObject["imported_records"]!!.jsonPrimitive.int
+    suspend fun backfill(token: String, start: Boolean): Backfill = withContext(Dispatchers.IO) {
+        val response = VoxJson.parseToJsonElement(VoxHttp.requestJson(if (start) "POST" else "GET", "/v1/connectors/gmail/backfill", bearerToken = token)).jsonObject
+        fun count(key: String) = response[key]?.jsonPrimitive?.intOrNull ?: 0
+        Backfill(response["state"]?.jsonPrimitive?.contentOrNull, count("processed"), count("imported"), count("skipped"))
     }
 }
